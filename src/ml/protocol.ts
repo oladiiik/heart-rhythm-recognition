@@ -16,6 +16,7 @@ export interface EpochProgress {
   readonly epoch: number;
   readonly totalEpochs: number;
   readonly error: number;
+  readonly history: readonly EpochStatus[];
 }
 
 export interface EvaluationProgress {

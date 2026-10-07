@@ -203,6 +203,8 @@ export function TrainTab() {
           </Placeholder>
         ) : (
           <>
+            {/* Поки навчання триває, показники й матриця мають зарезервоване місце: графік не стрибає, коли вони з’являються */}
+            {!summary && isTraining && <div className="facts-slot" />}
             {summary && (
               <div className="content-head">
                 <dl className="facts">
@@ -249,7 +251,11 @@ export function TrainTab() {
               </div>
             )}
 
-            {metrics && <ConfusionMatrix confusion={metrics.confusion} />}
+            {metrics ? (
+              <ConfusionMatrix confusion={metrics.confusion} />
+            ) : (
+              isTraining && <div className="confusion-slot" />
+            )}
           </>
         )}
       </section>

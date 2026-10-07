@@ -55,7 +55,7 @@ function runTraining(request: TrainRequest): void {
   const outcome = model.train(request.train, config, ({ epoch, error }) => {
     history.push({ epoch, error });
     if (shouldReport(epoch === config.epochs)) {
-      scope.postMessage({ type: 'epoch', epoch, totalEpochs: config.epochs, error });
+      scope.postMessage({ type: 'epoch', epoch, totalEpochs: config.epochs, error, history: downsample(history) });
     }
   });
   const trainMs = performance.now() - trainStartedAt;
@@ -65,6 +65,7 @@ function runTraining(request: TrainRequest): void {
     epoch: outcome.epochsRun,
     totalEpochs: config.epochs,
     error: outcome.finalError,
+    history: downsample(history),
   });
 
   const evaluationStartedAt = performance.now();

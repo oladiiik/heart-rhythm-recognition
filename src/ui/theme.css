@@ -16,6 +16,9 @@
   --status-height: 36px;
   /* Нижче за це графік не стискається: далі прокручується вміст вкладки */
   --chart-min-height: 340px;
+  /* Висота рядка показників і матриці помилок: стільки місця тримаємо для них, поки триває навчання */
+  --facts-height: 59px;
+  --confusion-height: 173px;
 
   --font: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
@@ -701,6 +704,17 @@ summary {
   text-align: center;
 }
 
+/* Поки навчання триває, показників і матриці ще немає; порожні блоки тримають їхнє місце, щоб графік не стрибав */
+.facts-slot {
+  flex: none;
+  height: var(--facts-height);
+}
+
+.confusion-slot {
+  flex: none;
+  height: var(--confusion-height);
+}
+
 /* Графіки */
 
 .chart {
@@ -911,15 +925,13 @@ summary {
   gap: 40px;
 }
 
-.windows summary,
-.help summary {
+.windows summary {
   color: var(--ink-secondary);
   font-size: 13px;
   cursor: pointer;
 }
 
-.windows summary:hover,
-.help summary:hover {
+.windows summary:hover {
   color: var(--ink);
 }
 
@@ -1020,20 +1032,6 @@ summary {
 .connection-dot-on {
   border-color: var(--ink);
   background: var(--ink);
-}
-
-.steps {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-  padding-left: 18px;
-  color: var(--ink-secondary);
-  font-size: 13px;
-}
-
-.steps strong {
-  color: var(--ink);
-  font-weight: 600;
 }
 
 /* Рядок стану й лог */

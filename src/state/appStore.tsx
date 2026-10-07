@@ -80,7 +80,7 @@ type Action =
   | { type: 'modelReplaced'; model: ModelState; lossHistory?: readonly EpochStatus[] }
   | { type: 'activityChanged'; activity: Activity }
   | { type: 'trainingStarted'; activity: Activity }
-  | { type: 'epochReported'; status: EpochStatus; activity: Activity }
+  | { type: 'epochReported'; history: readonly EpochStatus[]; activity: Activity }
   | { type: 'logAppended'; entry: LogEntry }
   | { type: 'logCleared' }
   | { type: 'recognitionAdded'; record: RecognitionRecord }
@@ -108,7 +108,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'trainingStarted':
       return { ...state, activity: action.activity, lossHistory: [] };
     case 'epochReported':
-      return { ...state, activity: action.activity, lossHistory: [...state.lossHistory, action.status] };
+      return { ...state, activity: action.activity, lossHistory: action.history };
     case 'logAppended':
       return { ...state, logEntries: [...state.logEntries, action.entry].slice(-MAX_LOG_ENTRIES) };
     case 'logCleared':
@@ -230,10 +230,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       job.current = startTraining(
         { train: trainSet, test: testSet, config },
         {
-          onEpoch: ({ epoch, totalEpochs, error }) =>
+          onEpoch: ({ epoch, totalEpochs, error, history }) =>
             dispatch({
               type: 'epochReported',
-              status: { epoch, error },
+              history,
               activity: {
                 status: 'running',
                 title,

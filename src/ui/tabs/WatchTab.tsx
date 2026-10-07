@@ -217,22 +217,6 @@ export function WatchTab() {
         )}
         <FormError message={error} />
 
-        {kind === 'bluetooth' && !bluetoothUnavailable && (
-          <details className="help">
-            <summary>Як підключити годинник</summary>
-            <ol className="steps">
-              <li>
-                На годиннику проведіть униз від циферблата, відкрийте <strong>Connected Fitness</strong> і натисніть{' '}
-                <strong>Connect</strong>. Першого разу ввімкніть <strong>Wider device access</strong>.
-              </li>
-              <li>Натисніть «Підключити» й оберіть годинник у вікні браузера.</li>
-              <li>
-                Підтвердьте пристрій на годиннику. Якщо Windows запропонує створити пару або попросить PIN, погодьтеся.
-              </li>
-            </ol>
-          </details>
-        )}
-
         <div className="side-group">
           <span className="side-label">Сесія</span>
           <div className="button-row">
