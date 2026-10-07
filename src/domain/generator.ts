@@ -1,6 +1,7 @@
 import { createRandom, randomInt, type Random } from './random';
 import { CLASS_RANGES, RHYTHM_CLASSES, WINDOW_SIZE, type BpmRange, type RhythmClass } from './rhythm';
 
+/** Профіль набору є аналогом «папки за якістю»: користувач обирає, на яких профілях навчати */
 export const DATASET_PROFILES = ['clean', 'noisy', 'border'] as const;
 
 export type DatasetProfile = (typeof DATASET_PROFILES)[number];
@@ -12,7 +13,7 @@ export const PROFILE_LABELS: Record<DatasetProfile, string> = {
 };
 
 export const PROFILE_HINTS: Record<DatasetProfile, string> = {
-  clean: 'два рівні частоти (Tmax і Tmin) з малим допуском — як у методиці генерування',
+  clean: 'два рівні частоти (Tmax і Tmin) з малим допуском, як у методиці генерування',
   noisy: 'довільні значення між Tmin і Tmax, допуск утричі більший',
   border: 'частоти біля меж класів (60 і 100 уд/хв), де класи найважче розрізнити',
 };
@@ -74,8 +75,8 @@ function pickMaxRate(rhythm: RhythmClass, profile: DatasetProfile, random: Rando
 /**
  * Одна послідовність за методикою генерування ритмів:
  *   Tmax = random(діапазон класу),  Tmin = Tmax - random(Tol),
- * далі кожне число серії — випадково Tmax або Tmin
- * (для профілю «Зашумлені» — будь-яке ціле між ними)
+ * далі кожне число серії випадково дорівнює Tmax або Tmin
+ * (для профілю «Зашумлені» це будь-яке ціле між ними)
  */
 export function generateSequence(
   rhythm: RhythmClass,

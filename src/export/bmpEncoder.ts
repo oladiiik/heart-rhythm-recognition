@@ -28,7 +28,7 @@ export function encodeBmp(image: RgbaImage): Uint8Array {
 
   view.setUint32(14, INFO_HEADER_SIZE, true);
   view.setInt32(18, width, true);
-  view.setInt32(22, height, true); // додатна висота — рядки йдуть знизу вгору
+  view.setInt32(22, height, true); // додатна висота означає, що рядки йдуть знизу вгору
   view.setUint16(26, 1, true);
   view.setUint16(28, 24, true);
   view.setUint32(34, pixelDataSize, true);

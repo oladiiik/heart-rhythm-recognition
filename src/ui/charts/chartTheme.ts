@@ -5,14 +5,13 @@ import type { RhythmClass } from '../../domain/rhythm';
  * як самостійний SVG, і все, що потрібно для його вигляду, має бути в самому SVG
  */
 export const CHART = {
-  surface: '#fcfcfb',
-  ink: '#0b0b0b',
-  secondary: '#52514e',
-  muted: '#898781',
-  grid: '#e1e0d9',
-  axis: '#c3c2b7',
-  series: '#2a78d6',
-  seriesWash: 'rgba(42, 120, 214, 0.10)',
+  surface: '#ffffff',
+  ink: '#141413',
+  secondary: '#55544f',
+  muted: '#8b8a84',
+  grid: '#ebeae6',
+  axis: '#c9c8c1',
+  series: '#141413',
   font: 'system-ui, -apple-system, "Segoe UI", sans-serif',
 } as const;
 

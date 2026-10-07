@@ -39,20 +39,20 @@ export const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
 export function validateTrainingConfig(config: TrainingConfig): string | null {
   const { epochs, learningRate, hiddenNeurons, errorThreshold } = TRAINING_LIMITS;
   if (!Number.isInteger(config.epochs) || config.epochs < epochs.min || config.epochs > epochs.max) {
-    return `Кількість епох — ціле число від ${epochs.min} до ${epochs.max}.`;
+    return `Кількість епох має бути цілим числом від ${epochs.min} до ${epochs.max}.`;
   }
   if (!(config.learningRate >= learningRate.min && config.learningRate <= learningRate.max)) {
-    return `Швидкість навчання — число від ${learningRate.min} до ${learningRate.max}.`;
+    return `Швидкість навчання має бути числом від ${learningRate.min} до ${learningRate.max}.`;
   }
   if (
     !Number.isInteger(config.hiddenNeurons) ||
     config.hiddenNeurons < hiddenNeurons.min ||
     config.hiddenNeurons > hiddenNeurons.max
   ) {
-    return `Нейронів у прихованому шарі — ціле число від ${hiddenNeurons.min} до ${hiddenNeurons.max}.`;
+    return `Кількість прихованих нейронів має бути цілим числом від ${hiddenNeurons.min} до ${hiddenNeurons.max}.`;
   }
   if (!(config.errorThreshold >= errorThreshold.min && config.errorThreshold <= errorThreshold.max)) {
-    return `Поріг похибки — число від ${errorThreshold.min} до ${errorThreshold.max}.`;
+    return `Поріг похибки має бути числом від ${errorThreshold.min} до ${errorThreshold.max}.`;
   }
   return null;
 }
@@ -135,7 +135,7 @@ export class RhythmModel {
     const status = this.network.train(data, {
       iterations: config.epochs,
       learningRate: config.learningRate,
-      // Brain.js не приймає нульовий поріг, тому «без ранньої зупинки» — це недосяжно малий поріг
+      // Brain.js не приймає нульовий поріг, тому «без ранньої зупинки» означає недосяжно малий поріг
       errorThresh: config.errorThreshold > 0 ? config.errorThreshold : Number.MIN_VALUE,
       callbackPeriod: 1,
       callback: ({ iterations, error }) => onEpoch({ epoch: iterations, error }),

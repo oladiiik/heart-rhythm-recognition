@@ -1,4 +1,4 @@
-import { useId, useState, type RefObject } from 'react';
+import { useState, type RefObject } from 'react';
 import { fileTimestamp, formatFileSize, saveBlob } from '../../export/fileSave';
 import { IMAGE_FORMATS, canvasToBlob, imageFormatInfo, type ImageFormat } from '../../export/imageExport';
 import { svgToCanvas } from '../../export/svgExport';
@@ -15,7 +15,6 @@ export function SaveImageControl({ svgRef, baseName, subject, disabled = false }
   const { log } = useApp();
   const [format, setFormat] = useState<ImageFormat>('png');
   const [saving, setSaving] = useState(false);
-  const selectId = useId();
 
   const save = async (): Promise<void> => {
     const svg = svgRef.current;
@@ -41,9 +40,9 @@ export function SaveImageControl({ svgRef, baseName, subject, disabled = false }
 
   return (
     <div className="save-image">
-      <label htmlFor={selectId}>Формат зображення</label>
       <select
-        id={selectId}
+        aria-label="Формат зображення"
+        title="Формат зображення"
         value={format}
         disabled={disabled}
         onChange={(event) => setFormat(event.target.value as ImageFormat)}

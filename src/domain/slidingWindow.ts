@@ -39,7 +39,7 @@ export function parseSeries(text: string): ParsedSeries {
   for (const token of tokens) {
     const value = Number(token);
     if (!Number.isFinite(value)) {
-      return { ok: false, message: `«${token}» — не число.` };
+      return { ok: false, message: `«${token}» не є числом.` };
     }
     if (value < MIN_INPUT_BPM || value > MAX_INPUT_BPM) {
       return {

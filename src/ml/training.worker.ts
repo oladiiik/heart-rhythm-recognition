@@ -59,7 +59,7 @@ function runTraining(request: TrainRequest): void {
     }
   });
   const trainMs = performance.now() - trainStartedAt;
-  // Рання зупинка могла пропустити останнє повідомлення — надсилаємо фактичний підсумок
+  // Рання зупинка могла пропустити останнє повідомлення, тому надсилаємо фактичний підсумок
   scope.postMessage({
     type: 'epoch',
     epoch: outcome.epochsRun,

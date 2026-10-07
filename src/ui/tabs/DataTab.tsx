@@ -19,15 +19,17 @@ import { countByClass } from '../../domain/metrics';
 import { CLASS_LABELS, RHYTHM_CLASSES, WINDOW_SIZE, type RhythmClass } from '../../domain/rhythm';
 import { fileTimestamp, formatFileSize, saveText } from '../../export/fileSave';
 import { fileInfoOf, useApp, type DatasetState } from '../../state/appStore';
-import { ClassCounts, ClassDot } from '../charts/ClassViews';
+import { ClassDot } from '../charts/ClassViews';
 import { RhythmFigure } from '../charts/RhythmFigure';
-import { FileDrop } from '../components/FileDrop';
 import { FormError, NumberField, Placeholder } from '../components/Field';
+import { FileButton } from '../components/FileButton';
 import { InfoPopover, type InfoRow } from '../components/InfoPopover';
 import { SaveImageControl } from '../components/SaveImageControl';
+import { Segmented, type SegmentOption } from '../components/Segmented';
+import { useRowsThatFit } from '../components/useRowsThatFit';
 import { formatDuration } from '../../format';
 
-const PAGE_SIZE = 12;
+const DEFAULT_PAGE_SIZE = 12;
 
 type ClassFilter = RhythmClass | 'all';
 
@@ -91,14 +93,9 @@ export function DataTab() {
 
   const [filter, setFilter] = useState<ClassFilter>('all');
   const [page, setPage] = useState(0);
+  const [tableWrap, pageSize] = useRowsThatFit<HTMLDivElement>(DEFAULT_PAGE_SIZE);
   const [selected, setSelected] = useState<number | null>(null);
   const figureRef = useRef<SVGSVGElement>(null);
-
-  const perClassNumber = Number(perClass);
-  const totalHint =
-    Number.isInteger(perClassNumber) && perClassNumber > 0
-      ? `Разом ${perClassNumber * RHYTHM_CLASSES.length} послідовностей.`
-      : '';
 
   const rows = useMemo(() => {
     if (!dataset) return [];
@@ -107,14 +104,37 @@ export function DataTab() {
       .filter(({ sequence }) => filter === 'all' || sequence.label === filter);
   }, [dataset, filter]);
   const info = useMemo(() => (dataset ? datasetInfo(dataset) : []), [dataset]);
-  const counts = useMemo(() => (dataset ? countByClass(dataset.sequences) : null), [dataset]);
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const filterOptions = useMemo((): SegmentOption<ClassFilter>[] => {
+    if (!dataset) return [];
+    const counts = countByClass(dataset.sequences);
+    return [
+      {
+        value: 'all',
+        label: (
+          <>
+            Усі <span className="segment-count">{dataset.sequences.length}</span>
+          </>
+        ),
+      },
+      ...RHYTHM_CLASSES.map((rhythm) => ({
+        value: rhythm,
+        label: (
+          <>
+            <ClassDot rhythm={rhythm} />
+            {CLASS_LABELS[rhythm]} <span className="segment-count">{counts[rhythm]}</span>
+          </>
+        ),
+      })),
+    ];
+  }, [dataset]);
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
-  const visibleRows = rows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const visibleRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const selectedSequence = selected !== null ? dataset?.sequences[selected] : undefined;
 
   const replaceDataset = (next: DatasetState): void => {
     setDataset(next);
+    setFilter('all');
     setPage(0);
     setSelected(0);
   };
@@ -204,31 +224,31 @@ export function DataTab() {
 
   return (
     <div className="tab-layout">
-      <section className="panel controls" aria-labelledby="data-controls-title">
-        <h2 id="data-controls-title">Параметри набору</h2>
-
-        <fieldset className="field">
-          <legend>Профілі набору</legend>
-          {DATASET_PROFILES.map((profile) => (
-            <label className="check" key={profile}>
-              <input type="checkbox" checked={profiles.includes(profile)} onChange={() => toggleProfile(profile)} />
-              <span>
-                <strong>{PROFILE_LABELS[profile]}</strong> — {PROFILE_HINTS[profile]}
-              </span>
-            </label>
-          ))}
-        </fieldset>
+      <aside className="side" aria-label="Параметри набору">
+        <div className="field-stack" role="group" aria-labelledby="profiles-label">
+          <span className="side-label" id="profiles-label">
+            Профілі набору
+          </span>
+          <div className="chips">
+            {DATASET_PROFILES.map((profile) => (
+              <label className="chip" key={profile} title={PROFILE_HINTS[profile]}>
+                <input type="checkbox" checked={profiles.includes(profile)} onChange={() => toggleProfile(profile)} />
+                {PROFILE_LABELS[profile]}
+              </label>
+            ))}
+          </div>
+        </div>
 
         <NumberField
           id="per-class"
           label="Послідовностей на клас"
           value={perClass}
           onChange={setPerClass}
-          placeholder={`від ${MIN_PER_CLASS}, напр. 300`}
+          placeholder="напр. 300"
           min={MIN_PER_CLASS}
           max={MAX_PER_CLASS}
           step={1}
-          hint={`Від ${MIN_PER_CLASS} до ${MAX_PER_CLASS}. ${totalHint}`}
+          hint={`Від ${MIN_PER_CLASS} до ${MAX_PER_CLASS}; класів ${RHYTHM_CLASSES.length}.`}
         />
         <NumberField
           id="tolerance"
@@ -239,7 +259,7 @@ export function DataTab() {
           min={0}
           max={MAX_TOLERANCE}
           step={1}
-          hint="Наскільки частота може відхилятися всередині однієї послідовності."
+          hint={`Від 0 до ${MAX_TOLERANCE}: наскільки частота може відхилятися всередині однієї послідовності.`}
         />
         <NumberField
           id="seed"
@@ -249,7 +269,7 @@ export function DataTab() {
           placeholder="напр. 1"
           min={0}
           step={1}
-          hint="Той самий seed дає той самий набір — зручно для повторних дослідів."
+          hint="Той самий seed дає той самий набір."
         />
 
         <button type="button" className="button button-primary" onClick={generate}>
@@ -257,157 +277,136 @@ export function DataTab() {
         </button>
         <FormError message={formError} />
 
-        <hr />
-
-        <FileDrop
-          id="dataset-file"
-          label="Завантажити набір із файла"
-          hint="CSV або JSON: чотири числа, клас і (необов’язково) профіль. Перетягніть файл сюди або натисніть."
-          accept=".csv,.json,text/csv,application/json"
-          onFile={(file) => void loadFile(file)}
-          disabled={isTraining}
-        />
-        <FormError message={fileError} />
-
-        <div className="button-row">
-          <button type="button" className="button" disabled={!dataset} onClick={() => saveDataset('csv')}>
-            Зберегти як CSV
-          </button>
-          <button type="button" className="button" disabled={!dataset} onClick={() => saveDataset('json')}>
-            Зберегти як JSON
-          </button>
+        <div className="side-group">
+          <span className="side-label">Файл набору</span>
+          <div className="button-row">
+            <FileButton
+              id="dataset-file"
+              label="Завантажити…"
+              hint="CSV або JSON: чотири числа, клас і (необов’язково) профіль. Файл можна перетягнути на кнопку."
+              accept=".csv,.json,text/csv,application/json"
+              onFile={(file) => void loadFile(file)}
+              disabled={isTraining}
+            />
+          </div>
+          <div className="button-row">
+            <button type="button" className="button" disabled={!dataset} onClick={() => saveDataset('csv')}>
+              Зберегти CSV
+            </button>
+            <button type="button" className="button" disabled={!dataset} onClick={() => saveDataset('json')}>
+              Зберегти JSON
+            </button>
+          </div>
+          <FormError message={fileError} />
         </div>
-      </section>
+      </aside>
 
-      <section className="panel results" aria-labelledby="data-results-title">
-        <header className="panel-header">
-          <h2 id="data-results-title">Набір даних</h2>
-          {dataset && <InfoPopover subject="набір даних" rows={info} />}
-        </header>
-
-        {!dataset || !counts ? (
-          <Placeholder title="Набір ще не створено">
-            Тут з’являться кількість послідовностей кожного класу, таблиця набору та графік вибраної послідовності.
-            Задайте параметри ліворуч і натисніть «Згенерувати набір» або завантажте файл.
+      <section className="content" aria-label="Набір даних">
+        {!dataset ? (
+          <Placeholder title="Набору ще немає">
+            Тут з’являться таблиця послідовностей і графік вибраної. Натисніть «Згенерувати набір» або завантажте файл.
           </Placeholder>
         ) : (
           <>
-            <ClassCounts counts={counts} />
-
-            <div className="table-toolbar">
-              <label htmlFor="class-filter">Показати клас</label>
-              <select
-                id="class-filter"
+            <div className="content-head">
+              <Segmented
+                className="class-filter"
+                label="Показати клас"
+                name="class-filter"
                 value={filter}
-                onChange={(event) => {
-                  setFilter(event.target.value as ClassFilter);
+                options={filterOptions}
+                onChange={(next) => {
+                  setFilter(next);
                   setPage(0);
                 }}
-              >
-                <option value="all">Усі класи</option>
-                {RHYTHM_CLASSES.map((rhythm) => (
-                  <option key={rhythm} value={rhythm}>
-                    {CLASS_LABELS[rhythm]}
-                  </option>
-                ))}
-              </select>
-              <div className="pager">
-                <button
-                  type="button"
-                  className="button"
-                  disabled={currentPage === 0}
-                  onClick={() => setPage(currentPage - 1)}
-                >
-                  ← Попередня
-                </button>
-                <span>
-                  Сторінка {currentPage + 1} з {pageCount}
-                </span>
-                <button
-                  type="button"
-                  className="button"
-                  disabled={currentPage >= pageCount - 1}
-                  onClick={() => setPage(currentPage + 1)}
-                >
-                  Наступна →
-                </button>
-              </div>
+              />
+              <InfoPopover subject="набір даних" rows={info} />
             </div>
 
             <div className="data-split">
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th scope="col" rowSpan={2}>
-                        №
-                      </th>
-                      <th scope="colgroup" colSpan={WINDOW_SIZE} className="group-header">
-                        Частота, уд/хв
-                      </th>
-                      <th scope="col" rowSpan={2}>
-                        Клас
-                      </th>
-                      <th scope="col" rowSpan={2}>
-                        Профіль
-                      </th>
-                    </tr>
-                    <tr>
-                      {Array.from({ length: WINDOW_SIZE }, (_, i) => (
-                        <th scope="col" className="numeric" key={i}>
-                          {i + 1}
+              <div className="table-block">
+                <div className="table-wrap" ref={tableWrap}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">№</th>
+                        <th scope="colgroup" colSpan={WINDOW_SIZE} className="numeric">
+                          Частота, уд/хв
                         </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleRows.map(({ sequence, index }) => (
-                      <tr
-                        key={index}
-                        className={index === selected ? 'row-selected' : undefined}
-                        onClick={() => setSelected(index)}
-                        tabIndex={0}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            setSelected(index);
-                          }
-                        }}
-                        aria-selected={index === selected}
-                      >
-                        <td className="muted">{index + 1}</td>
-                        {sequence.values.map((value, i) => (
-                          <td className="numeric" key={i}>
-                            {value}
-                          </td>
-                        ))}
-                        <td>
-                          <ClassDot rhythm={sequence.label} />
-                          {CLASS_LABELS[sequence.label]}
-                        </td>
-                        <td>{ORIGIN_LABELS[sequence.profile]}</td>
+                        <th scope="col">Клас</th>
+                        <th scope="col">Профіль</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {visibleRows.map(({ sequence, index }) => (
+                        <tr
+                          key={index}
+                          className={index === selected ? 'row-selected' : undefined}
+                          onClick={() => setSelected(index)}
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setSelected(index);
+                            }
+                          }}
+                          aria-selected={index === selected}
+                        >
+                          <td className="muted">{index + 1}</td>
+                          {sequence.values.map((value, i) => (
+                            <td className="numeric" key={i}>
+                              {value}
+                            </td>
+                          ))}
+                          <td>
+                            <ClassDot rhythm={sequence.label} />
+                            {CLASS_LABELS[sequence.label]}
+                          </td>
+                          <td className="muted">{ORIGIN_LABELS[sequence.profile]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pager">
+                  <button
+                    type="button"
+                    className="button"
+                    aria-label="Попередня сторінка"
+                    title="Попередня сторінка"
+                    disabled={currentPage === 0}
+                    onClick={() => setPage(currentPage - 1)}
+                  >
+                    ‹
+                  </button>
+                  <span>
+                    {currentPage + 1} з {pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    className="button"
+                    aria-label="Наступна сторінка"
+                    title="Наступна сторінка"
+                    disabled={currentPage >= pageCount - 1}
+                    onClick={() => setPage(currentPage + 1)}
+                  >
+                    ›
+                  </button>
+                </div>
               </div>
 
-              <div className="figure-block">
-                {selectedSequence ? (
-                  <>
-                    <RhythmFigure series={selectedSequence.values} svgRef={figureRef} />
+              {selectedSequence && (
+                <div className="figure-block">
+                  <RhythmFigure series={selectedSequence.values} rhythm={selectedSequence.label} svgRef={figureRef} />
+                  <div className="figure-footer">
                     <SaveImageControl
                       svgRef={figureRef}
                       baseName="sequence"
                       subject={`послідовність № ${(selected ?? 0) + 1}`}
                     />
-                  </>
-                ) : (
-                  <Placeholder title="Графік послідовності">
-                    Натисніть рядок таблиці, щоб побачити R-зубці та інтервали цієї послідовності.
-                  </Placeholder>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}

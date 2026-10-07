@@ -84,7 +84,7 @@ describe('validateTrainingConfig', () => {
     expect(validateTrainingConfig(DEFAULT_TRAINING_CONFIG)).toBeNull();
     expect(validateTrainingConfig({ ...DEFAULT_TRAINING_CONFIG, epochs: 0 })).toMatch(/епох/);
     expect(validateTrainingConfig({ ...DEFAULT_TRAINING_CONFIG, learningRate: 0 })).toMatch(/Швидкість/);
-    expect(validateTrainingConfig({ ...DEFAULT_TRAINING_CONFIG, hiddenNeurons: 0 })).toMatch(/Нейронів/);
+    expect(validateTrainingConfig({ ...DEFAULT_TRAINING_CONFIG, hiddenNeurons: 0 })).toMatch(/нейронів/);
     expect(validateTrainingConfig({ ...DEFAULT_TRAINING_CONFIG, errorThreshold: Number.NaN })).toMatch(/Поріг/);
   });
 });

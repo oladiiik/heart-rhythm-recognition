@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { encodeBmp } from './bmpEncoder';
 
 describe('encodeBmp', () => {
-  // 3×2: верхній рядок червоний, зелений, синій; нижній — білий, чорний, напівпрозорий чорний
+  // 3×2: верхній рядок червоний, зелений, синій; нижній рядок білий, чорний, напівпрозорий чорний
   const image = {
     width: 3,
     height: 2,
@@ -25,6 +25,7 @@ describe('encodeBmp', () => {
   });
 
   it('зберігає рядки знизу вгору в порядку BGR', () => {
+    // Першим у файлі йде нижній рядок зображення
     expect(Array.from(bytes.slice(54, 54 + 9))).toEqual([255, 255, 255, 0, 0, 0, 255, 255, 255]);
     expect(Array.from(bytes.slice(66, 66 + 9))).toEqual([0, 0, 255, 0, 255, 0, 255, 0, 0]);
   });

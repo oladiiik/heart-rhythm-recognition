@@ -3,20 +3,15 @@ import type { ReactNode } from 'react';
 interface FieldProps {
   readonly id: string;
   readonly label: string;
-  readonly hint?: ReactNode;
+  readonly hint?: string;
   readonly children: ReactNode;
 }
 
 export function Field({ id, label, hint, children }: FieldProps) {
   return (
-    <div className="field">
+    <div className="field" title={hint}>
       <label htmlFor={id}>{label}</label>
       {children}
-      {hint && (
-        <p className="field-hint" id={`${id}-hint`}>
-          {hint}
-        </p>
-      )}
     </div>
   );
 }
@@ -24,7 +19,7 @@ export function Field({ id, label, hint, children }: FieldProps) {
 interface NumberFieldProps {
   readonly id: string;
   readonly label: string;
-  readonly hint?: ReactNode;
+  readonly hint?: string;
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly placeholder: string;
@@ -43,16 +38,21 @@ export function NumberField({ id, label, hint, value, onChange, ...input }: Numb
         inputMode="decimal"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        aria-describedby={hint ? `${id}-hint` : undefined}
         {...input}
       />
     </Field>
   );
 }
 
-export function Placeholder({ title, children }: { title: string; children: ReactNode }) {
+interface PlaceholderProps {
+  readonly title: string;
+  readonly children: ReactNode;
+  readonly inline?: boolean;
+}
+
+export function Placeholder({ title, children, inline = false }: PlaceholderProps) {
   return (
-    <div className="placeholder">
+    <div className={inline ? 'placeholder placeholder-inline' : 'placeholder'}>
       <p className="placeholder-title">{title}</p>
       <p>{children}</p>
     </div>

@@ -5,8 +5,8 @@ import { DEFAULT_TRAINING_CONFIG, TRAINING_LIMITS, type TrainingConfig } from '.
 import { MAX_TEST_SHARE, MIN_TEST_SHARE, fileInfoOf, useApp, type ModelState } from '../../state/appStore';
 import { ConfusionMatrix } from '../charts/ClassViews';
 import { LossChart } from '../charts/LossChart';
-import { FileDrop } from '../components/FileDrop';
 import { FormError, NumberField, Placeholder } from '../components/Field';
+import { FileButton } from '../components/FileButton';
 import { InfoPopover, type InfoRow } from '../components/InfoPopover';
 import { SaveImageControl } from '../components/SaveImageControl';
 import { formatDuration, formatExact, formatNumber, formatPercent } from '../../format';
@@ -41,7 +41,7 @@ function modelInfo(state: ModelState): InfoRow[] {
 }
 
 export function TrainTab() {
-  const { dataset, model, lossHistory, isTraining, train, cancelTraining, loadModel, log } = useApp();
+  const { model, lossHistory, isTraining, train, cancelTraining, loadModel, log } = useApp();
 
   const [epochs, setEpochs] = useState(String(DEFAULT_TRAINING_CONFIG.epochs));
   const [learningRate, setLearningRate] = useState(String(DEFAULT_TRAINING_CONFIG.learningRate));
@@ -54,7 +54,8 @@ export function TrainTab() {
   const chartRef = useRef<SVGSVGElement>(null);
 
   const info = useMemo(() => (model ? modelInfo(model) : []), [model]);
-  const summary = model?.snapshot.summary;
+  // Поки триває нове навчання, показники попередньої моделі не показуємо: вони не стосуються графіка на екрані
+  const summary = isTraining ? undefined : model?.snapshot.summary;
   const metrics = summary?.metrics ?? null;
   const maxEpoch = isTraining ? runningEpochs : (lossHistory.at(-1)?.epoch ?? 1);
 
@@ -102,9 +103,7 @@ export function TrainTab() {
 
   return (
     <div className="tab-layout">
-      <section className="panel controls" aria-labelledby="train-controls-title">
-        <h2 id="train-controls-title">Параметри навчання</h2>
-
+      <aside className="side" aria-label="Параметри навчання">
         <NumberField
           id="epochs"
           label="Кількість епох"
@@ -115,7 +114,7 @@ export function TrainTab() {
           max={TRAINING_LIMITS.epochs.max}
           step={1}
           disabled={isTraining}
-          hint="Скільки разів мережа пройде весь навчальний набір."
+          hint={`Від ${TRAINING_LIMITS.epochs.min} до ${TRAINING_LIMITS.epochs.max}: скільки разів мережа пройде весь навчальний набір.`}
         />
         <NumberField
           id="learning-rate"
@@ -127,11 +126,11 @@ export function TrainTab() {
           max={TRAINING_LIMITS.learningRate.max}
           step="any"
           disabled={isTraining}
-          hint={`Від ${formatNumber(TRAINING_LIMITS.learningRate.min, 4)} до ${formatNumber(TRAINING_LIMITS.learningRate.max, 2)}. Більше — швидше, але менш стабільно.`}
+          hint={`Від ${formatNumber(TRAINING_LIMITS.learningRate.min, 4)} до ${formatNumber(TRAINING_LIMITS.learningRate.max, 2)}. Що більша, то швидше навчання, але воно менш стабільне.`}
         />
         <NumberField
           id="hidden-neurons"
-          label="Нейронів у прихованому шарі"
+          label="Прихованих нейронів"
           value={hiddenNeurons}
           onChange={setHiddenNeurons}
           placeholder="напр. 8"
@@ -139,7 +138,7 @@ export function TrainTab() {
           max={TRAINING_LIMITS.hiddenNeurons.max}
           step={1}
           disabled={isTraining}
-          hint={`Мережа має ${WINDOW_SIZE} входи та ${RHYTHM_CLASSES.length} виходи — по одному на клас.`}
+          hint={`Від ${TRAINING_LIMITS.hiddenNeurons.min} до ${TRAINING_LIMITS.hiddenNeurons.max}. Мережа має ${WINDOW_SIZE} входи та ${RHYTHM_CLASSES.length} виходи, по одному на клас.`}
         />
         <NumberField
           id="error-threshold"
@@ -151,11 +150,11 @@ export function TrainTab() {
           max={TRAINING_LIMITS.errorThreshold.max}
           step="any"
           disabled={isTraining}
-          hint="Навчання зупиниться раніше, щойно похибка стане не більшою за поріг. 0 — виконати всі епохи."
+          hint="Навчання зупиниться раніше, щойно похибка стане не більшою за поріг. Нуль означає виконати всі епохи."
         />
         <NumberField
           id="test-share"
-          label="Частка тестових даних, %"
+          label="Тестових даних, %"
           value={testPercent}
           onChange={setTestPercent}
           placeholder="напр. 20"
@@ -163,92 +162,95 @@ export function TrainTab() {
           max={MAX_TEST_SHARE * 100}
           step={1}
           disabled={isTraining}
-          hint="Ці послідовності мережа не бачить під час навчання — на них перевіряється точність."
+          hint={`Від ${MIN_TEST_SHARE * 100} до ${MAX_TEST_SHARE * 100}. Цих послідовностей мережа не бачить під час навчання: на них перевіряється точність.`}
         />
 
-        <div className="button-row">
-          <button type="button" className="button button-primary" disabled={isTraining} onClick={start}>
+        {isTraining ? (
+          <button type="button" className="button button-stop" onClick={cancelTraining}>
+            Зупинити навчання
+          </button>
+        ) : (
+          <button type="button" className="button button-primary" onClick={start}>
             Навчити мережу
           </button>
-          <button type="button" className="button button-danger" disabled={!isTraining} onClick={cancelTraining}>
-            Зупинити
-          </button>
-        </div>
+        )}
         <FormError message={formError} />
-        {!dataset && <p className="field-hint">Набору даних ще немає — створіть його на вкладці «Дані».</p>}
 
-        <hr />
-
-        <FileDrop
-          id="model-file"
-          label="Завантажити модель із файла"
-          hint="JSON, збережений кнопкою «Зберегти модель». Перетягніть файл сюди або натисніть."
-          accept=".json,application/json"
-          onFile={(file) => void loadFile(file)}
-          disabled={isTraining}
-        />
-        <FormError message={fileError} />
-        <button type="button" className="button" disabled={!model || isTraining} onClick={saveModel}>
-          Зберегти модель
-        </button>
-      </section>
-
-      <section className="panel results" aria-labelledby="train-results-title">
-        <header className="panel-header">
-          <h2 id="train-results-title">Результат навчання</h2>
-          {model && <InfoPopover subject="модель" rows={info} />}
-        </header>
-
-        {lossHistory.length === 0 ? (
-          <Placeholder title="Графік похибки">
-            {model
-              ? 'Модель завантажено з файла, тому історії навчання немає. Графік з’явиться після нового навчання.'
-              : 'Тут під час навчання з’явиться графік похибки за епохами. Задайте параметри ліворуч і натисніть «Навчити мережу».'}
-          </Placeholder>
-        ) : (
-          <div className="figure-block">
-            <LossChart history={lossHistory} maxEpoch={maxEpoch} svgRef={chartRef} />
-            <SaveImageControl
-              svgRef={chartRef}
-              baseName="training-error"
-              subject="графік похибки"
+        <div className="side-group">
+          <span className="side-label">Файл моделі</span>
+          <div className="button-row">
+            <FileButton
+              id="model-file"
+              label="Завантажити…"
+              hint="JSON, збережений кнопкою «Зберегти модель». Файл можна перетягнути на кнопку."
+              accept=".json,application/json"
+              onFile={(file) => void loadFile(file)}
               disabled={isTraining}
             />
+            <button type="button" className="button" disabled={!model || isTraining} onClick={saveModel}>
+              Зберегти модель
+            </button>
           </div>
-        )}
+          <FormError message={fileError} />
+        </div>
+      </aside>
 
-        {summary && metrics ? (
+      <section className="content" aria-label="Результат навчання">
+        {lossHistory.length === 0 && !summary ? (
+          <Placeholder title="Мережу ще не навчено">
+            Тут з’являться графік похибки, точність на тестових даних і матриця помилок. Натисніть «Навчити мережу» або
+            завантажте модель із файла.
+          </Placeholder>
+        ) : (
           <>
-            <div className="stats">
-              <div className="stat">
-                <div className="stat-label">Точність на тестових даних</div>
-                <div className="stat-value">{formatPercent(metrics.accuracy)}</div>
-                <div className="stat-note">
-                  правильно {metrics.correct} із {metrics.total}
+            {summary && (
+              <div className="content-head">
+                <dl className="facts">
+                  {metrics && (
+                    <>
+                      <div className="fact fact-primary">
+                        <dt>Точність на тестових даних</dt>
+                        <dd>{formatPercent(metrics.accuracy)}</dd>
+                      </div>
+                      <div className="fact">
+                        <dt>Правильних відповідей</dt>
+                        <dd>
+                          {metrics.correct} <span className="fact-unit">із {metrics.total}</span>
+                        </dd>
+                      </div>
+                    </>
+                  )}
+                  <div className="fact">
+                    <dt>Кінцева похибка</dt>
+                    <dd>{formatNumber(summary.finalError, 4)}</dd>
+                  </div>
+                  <div className="fact">
+                    <dt>Епох виконано</dt>
+                    <dd>
+                      {summary.epochsRun} <span className="fact-unit">із {summary.config.epochs}</span>
+                    </dd>
+                  </div>
+                </dl>
+                {model && <InfoPopover subject="модель" rows={info} />}
+              </div>
+            )}
+
+            {lossHistory.length > 0 && (
+              <div className="figure-block">
+                <LossChart history={lossHistory} maxEpoch={maxEpoch} svgRef={chartRef} />
+                <div className="figure-footer">
+                  <SaveImageControl
+                    svgRef={chartRef}
+                    baseName="training-error"
+                    subject="графік похибки"
+                    disabled={isTraining}
+                  />
                 </div>
               </div>
-              <div className="stat">
-                <div className="stat-label">Епох виконано</div>
-                <div className="stat-value">{summary.epochsRun}</div>
-                <div className="stat-note">із {summary.config.epochs} заданих</div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">Кінцева похибка</div>
-                <div className="stat-value">{formatNumber(summary.finalError, 4)}</div>
-                <div className="stat-note">поріг {formatExact(summary.config.errorThreshold)}</div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">Час навчання</div>
-                <div className="stat-value">{formatDuration(summary.trainMs)}</div>
-                <div className="stat-note">{summary.trainedOn} навчальних послідовностей</div>
-              </div>
-            </div>
-            <ConfusionMatrix confusion={metrics.confusion} />
+            )}
+
+            {metrics && <ConfusionMatrix confusion={metrics.confusion} />}
           </>
-        ) : (
-          <Placeholder title="Точність і матриця помилок">
-            Після навчання тут з’являться точність на тестових даних, час навчання та матриця помилок за класами.
-          </Placeholder>
         )}
       </section>
     </div>

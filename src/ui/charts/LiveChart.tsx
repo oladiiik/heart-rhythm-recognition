@@ -1,6 +1,8 @@
 import { useState, type MouseEvent, type Ref } from 'react';
 import { CLASS_LABELS, type RhythmClass } from '../../domain/rhythm';
 import { formatClock } from '../../log/operationLog';
+import type { ElementSize } from '../useElementSize';
+import { ChartFrame } from './ChartFrame';
 import { CHART, CLASS_COLORS, niceTicks } from './chartTheme';
 
 export interface LiveBeat {
@@ -16,25 +18,34 @@ interface LiveChartProps {
 
 export const LIVE_CHART_CAPACITY = 60;
 
-const WIDTH = 960;
-const HEIGHT = 310;
 const LEFT = 52;
-const RIGHT = 870;
 const TOP = 44;
-const BASE = 232;
-const STRIP_Y = 262;
+const RIGHT_MARGIN = 90;
+const BOTTOM_MARGIN = 58;
+const STRIP_OFFSET = 30;
 const STRIP_HEIGHT = 12;
+const MIN_PLOT_SIZE = 40;
+const Y_TICK_SPACING = 70;
 const REFERENCE_RATES = [60, 100];
 
-export function LiveChart({ beats, svgRef }: LiveChartProps) {
+export function LiveChart(props: LiveChartProps) {
+  return <ChartFrame>{(size) => <LivePlot {...props} size={size} />}</ChartFrame>;
+}
+
+function LivePlot({ beats, svgRef, size }: LiveChartProps & { readonly size: ElementSize }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const { width, height } = size;
+  const right = Math.max(LEFT + MIN_PLOT_SIZE, width - RIGHT_MARGIN);
+  const base = Math.max(TOP + MIN_PLOT_SIZE, height - BOTTOM_MARGIN);
+  const stripY = base + STRIP_OFFSET;
 
   const rates = beats.map((beat) => beat.bpm);
   const yMin = Math.min(40, ...rates.map((bpm) => bpm - 5));
   const yMax = Math.max(140, ...rates.map((bpm) => bpm + 5));
-  const slot = (RIGHT - LEFT) / (LIVE_CHART_CAPACITY - 1);
+  const slot = (right - LEFT) / (LIVE_CHART_CAPACITY - 1);
   const indexToX = (index: number): number => LEFT + index * slot;
-  const rateToY = (bpm: number): number => BASE - ((bpm - yMin) / (yMax - yMin)) * (BASE - TOP);
+  const rateToY = (bpm: number): number => base - ((bpm - yMin) / (yMax - yMin)) * (base - TOP);
 
   const line = beats
     .map((beat, index) => `${index === 0 ? 'M' : 'L'}${indexToX(index)},${rateToY(beat.bpm)}`)
@@ -50,31 +61,33 @@ export function LiveChart({ beats, svgRef }: LiveChartProps) {
   };
 
   return (
-    <div className="chart">
+    <>
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="Графік пульсу в реальному часі"
         fontFamily={CHART.font}
       >
-        <rect width={WIDTH} height={HEIGHT} fill={CHART.surface} />
-        <text x={16} y={24} fontSize={14} fontWeight={600} fill={CHART.ink}>
-          Пульс, уд/хв — останні {LIVE_CHART_CAPACITY} значень
+        <rect width={width} height={height} fill={CHART.surface} />
+        <text x={0} y={24} fontSize={14} fontWeight={600} fill={CHART.ink}>
+          Пульс, уд/хв
         </text>
 
-        {niceTicks(yMin, yMax, 5).map((bpm) => (
+        {niceTicks(yMin, yMax, Math.max(2, Math.round((base - TOP) / Y_TICK_SPACING))).map((bpm) => (
           <g key={bpm}>
-            <line x1={LEFT} x2={RIGHT} y1={rateToY(bpm)} y2={rateToY(bpm)} stroke={CHART.grid} />
-            <text x={LEFT - 8} y={rateToY(bpm) + 4} fontSize={11} textAnchor="end" fill={CHART.muted}>
+            <line x1={LEFT} x2={right} y1={rateToY(bpm)} y2={rateToY(bpm)} stroke={CHART.grid} />
+            <text x={LEFT - 8} y={rateToY(bpm) + 4} fontSize={12} textAnchor="end" fill={CHART.muted}>
               {bpm}
             </text>
           </g>
         ))}
         {REFERENCE_RATES.map((bpm) => (
           <g key={bpm}>
-            <line x1={LEFT} x2={RIGHT + 6} y1={rateToY(bpm)} y2={rateToY(bpm)} stroke={CHART.secondary} />
-            <text x={RIGHT + 10} y={rateToY(bpm) + 4} fontSize={11} fill={CHART.secondary}>
+            <line x1={LEFT} x2={right + 6} y1={rateToY(bpm)} y2={rateToY(bpm)} stroke={CHART.secondary} />
+            <text x={right + 10} y={rateToY(bpm) + 4} fontSize={12} fill={CHART.secondary}>
               межа {bpm}
             </text>
           </g>
@@ -91,33 +104,30 @@ export function LiveChart({ beats, svgRef }: LiveChartProps) {
               stroke={CHART.surface}
               strokeWidth={2}
             />
-            <text x={indexToX(beats.length - 1) + 10} y={rateToY(last.bpm) - 8} fontSize={12} fill={CHART.ink}>
+            <text x={indexToX(beats.length - 1) + 10} y={rateToY(last.bpm) - 8} fontSize={13} fill={CHART.ink}>
               {last.bpm}
             </text>
           </g>
         )}
 
-        <text x={16} y={STRIP_Y + 10} fontSize={11} fill={CHART.secondary}>
+        <text x={0} y={stripY + 10} fontSize={12} fill={CHART.secondary}>
           клас
         </text>
         {beats.map((beat, index) => (
           <rect
             key={beat.at}
             x={indexToX(index) - slot / 2 + 1}
-            y={STRIP_Y}
-            width={slot - 2}
+            y={stripY}
+            width={Math.max(1, slot - 2)}
             height={STRIP_HEIGHT}
             rx={2}
             fill={beat.label ? CLASS_COLORS[beat.label] : CHART.grid}
           />
         ))}
-        <text x={(LEFT + RIGHT) / 2} y={HEIGHT - 10} fontSize={11} textAnchor="middle" fill={CHART.muted}>
-          старіші значення ліворуч, найновіше праворуч
-        </text>
 
         {hovered && hoveredIndex !== null && (
           <g data-export-skip pointerEvents="none">
-            <line x1={indexToX(hoveredIndex)} x2={indexToX(hoveredIndex)} y1={TOP} y2={BASE} stroke={CHART.axis} />
+            <line x1={indexToX(hoveredIndex)} x2={indexToX(hoveredIndex)} y1={TOP} y2={base} stroke={CHART.axis} />
             <circle
               cx={indexToX(hoveredIndex)}
               cy={rateToY(hovered.bpm)}
@@ -132,8 +142,8 @@ export function LiveChart({ beats, svgRef }: LiveChartProps) {
           data-export-skip
           x={LEFT}
           y={TOP}
-          width={RIGHT - LEFT}
-          height={STRIP_Y + STRIP_HEIGHT - TOP}
+          width={right - LEFT}
+          height={stripY + STRIP_HEIGHT - TOP}
           fill="transparent"
           onMouseMove={handleMove}
           onMouseLeave={() => setHoveredIndex(null)}
@@ -142,10 +152,7 @@ export function LiveChart({ beats, svgRef }: LiveChartProps) {
       {hovered && hoveredIndex !== null && (
         <div
           className="chart-tooltip"
-          style={{
-            left: `${(indexToX(hoveredIndex) / WIDTH) * 100}%`,
-            top: `${(rateToY(hovered.bpm) / HEIGHT) * 100}%`,
-          }}
+          style={{ left: indexToX(hoveredIndex), top: rateToY(hovered.bpm) }}
           role="status"
         >
           <strong>{hovered.bpm} уд/хв</strong>
@@ -153,6 +160,6 @@ export function LiveChart({ beats, svgRef }: LiveChartProps) {
           <span>{hovered.label ? CLASS_LABELS[hovered.label] : 'ще не розпізнано'}</span>
         </div>
       )}
-    </div>
+    </>
   );
 }

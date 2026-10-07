@@ -1,6 +1,6 @@
 import { useState, type DragEvent } from 'react';
 
-interface FileDropProps {
+interface FileButtonProps {
   readonly id: string;
   readonly label: string;
   readonly hint: string;
@@ -9,7 +9,7 @@ interface FileDropProps {
   readonly disabled?: boolean;
 }
 
-export function FileDrop({ id, label, hint, accept, onFile, disabled = false }: FileDropProps) {
+export function FileButton({ id, label, hint, accept, onFile, disabled = false }: FileButtonProps) {
   const [dragging, setDragging] = useState(false);
 
   const handleDrop = (event: DragEvent<HTMLLabelElement>): void => {
@@ -19,7 +19,7 @@ export function FileDrop({ id, label, hint, accept, onFile, disabled = false }: 
     if (file && !disabled) onFile(file);
   };
 
-  const className = ['file-drop', dragging && 'file-drop-active', disabled && 'file-drop-disabled']
+  const className = ['button', 'file-button', dragging && 'file-button-active', disabled && 'file-button-disabled']
     .filter(Boolean)
     .join(' ');
 
@@ -27,6 +27,7 @@ export function FileDrop({ id, label, hint, accept, onFile, disabled = false }: 
     <label
       className={className}
       htmlFor={id}
+      title={hint}
       onDragOver={(event) => {
         event.preventDefault();
         if (!disabled) setDragging(true);
@@ -34,8 +35,7 @@ export function FileDrop({ id, label, hint, accept, onFile, disabled = false }: 
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
-      <span className="file-drop-label">{label}</span>
-      <span className="file-drop-hint">{hint}</span>
+      {label}
       <input
         id={id}
         type="file"

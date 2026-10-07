@@ -2,6 +2,7 @@ import type { LabeledSequence } from './generator';
 import { createRandom, shuffled } from './random';
 import { RHYTHM_CLASSES, type RhythmClass } from './rhythm';
 
+/** Рядки відповідають справжньому класу, стовпці відповіді мережі */
 export type ConfusionMatrix = Record<RhythmClass, Record<RhythmClass, number>>;
 
 export interface EvaluationMetrics {

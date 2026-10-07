@@ -13,7 +13,7 @@ export interface TrainingJob {
 
 /**
  * Запускає навчання в окремому потоці. На кожне навчання створюється новий воркер:
- * так «Зупинити» — це просто завершення потоку, без проміжного стану, який треба прибирати
+ * так «Зупинити» зводиться до завершення потоку, без проміжного стану, який треба прибирати
  */
 export function startTraining(request: Omit<TrainRequest, 'type'>, handlers: TrainingHandlers): TrainingJob {
   const worker = new Worker(new URL('./training.worker.ts', import.meta.url), { type: 'module' });

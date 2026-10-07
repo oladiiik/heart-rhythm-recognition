@@ -171,7 +171,7 @@ function validateTrainingRequest(dataset: DatasetState | null, request: Training
     return 'У наборі мають бути послідовності всіх трьох класів.';
   }
   if (!(request.testShare >= MIN_TEST_SHARE && request.testShare <= MAX_TEST_SHARE)) {
-    return `Частка тестових даних — від ${MIN_TEST_SHARE * 100}% до ${MAX_TEST_SHARE * 100}%.`;
+    return `Частка тестових даних має бути від ${MIN_TEST_SHARE * 100}% до ${MAX_TEST_SHARE * 100}%.`;
   }
   return validateTrainingConfig(request.config);
 }

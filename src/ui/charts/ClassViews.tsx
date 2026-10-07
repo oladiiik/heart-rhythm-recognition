@@ -17,35 +17,12 @@ export function ClassLegend() {
   return (
     <ul className="class-legend">
       {RHYTHM_CLASSES.map((rhythm) => (
-        <li key={rhythm}>
+        <li key={rhythm} title={CLASS_HINTS[rhythm]}>
           <ClassDot rhythm={rhythm} />
-          {CLASS_LABELS[rhythm]} <span className="muted">({CLASS_HINTS[rhythm]})</span>
+          {CLASS_LABELS[rhythm]}
         </li>
       ))}
     </ul>
-  );
-}
-
-export function ClassCounts({ counts }: { counts: Record<RhythmClass, number> }) {
-  const total = RHYTHM_CLASSES.reduce((sum, rhythm) => sum + counts[rhythm], 0);
-  return (
-    <div className="class-counts">
-      {RHYTHM_CLASSES.map((rhythm) => {
-        const share = total === 0 ? 0 : counts[rhythm] / total;
-        return (
-          <div className="class-count" key={rhythm}>
-            <div className="class-count-label">
-              <ClassDot rhythm={rhythm} />
-              {CLASS_LABELS[rhythm]}
-            </div>
-            <div className="class-count-value">{counts[rhythm]}</div>
-            <div className="meter" title={`${formatPercent(share)} набору`}>
-              <div className="meter-fill" style={{ width: `${share * 100}%`, background: CLASS_COLORS[rhythm] }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -71,15 +48,18 @@ export function ProbabilityBars({ probabilities, best }: { probabilities: ClassP
   );
 }
 
+const HEAT_MAX_OPACITY = 0.86;
+const LIGHT_TEXT_FROM_SHARE = 0.5;
+
 export function ConfusionMatrix({ confusion }: { confusion: Confusion }) {
   return (
     <table className="confusion">
-      <caption>Рядки — справжній клас, стовпці — відповідь мережі</caption>
+      <caption>Матриця помилок</caption>
       <thead>
         <tr>
-          <th scope="col">Справжній клас</th>
+          <td />
           {RHYTHM_CLASSES.map((rhythm) => (
-            <th scope="col" key={rhythm}>
+            <th scope="col" key={rhythm} title="Відповідь мережі">
               {CLASS_LABELS[rhythm]}
             </th>
           ))}
@@ -90,7 +70,7 @@ export function ConfusionMatrix({ confusion }: { confusion: Confusion }) {
           const rowTotal = RHYTHM_CLASSES.reduce((sum, predicted) => sum + confusion[actual][predicted], 0);
           return (
             <tr key={actual}>
-              <th scope="row">
+              <th scope="row" title="Справжній клас">
                 <ClassDot rhythm={actual} />
                 {CLASS_LABELS[actual]}
               </th>
@@ -100,8 +80,12 @@ export function ConfusionMatrix({ confusion }: { confusion: Confusion }) {
                 return (
                   <td
                     key={predicted}
-                    className={share > 0.55 ? 'confusion-cell confusion-cell-strong' : 'confusion-cell'}
-                    style={{ background: `rgba(42, 120, 214, ${share * 0.9})` }}
+                    className="confusion-cell"
+                    style={{
+                      background: `rgba(20, 20, 19, ${share * HEAT_MAX_OPACITY})`,
+                      color: share >= LIGHT_TEXT_FROM_SHARE ? '#fff' : undefined,
+                      fontWeight: actual === predicted ? 600 : undefined,
+                    }}
                     title={`${count} із ${rowTotal} (${formatPercent(share)})`}
                   >
                     {count}

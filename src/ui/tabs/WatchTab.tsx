@@ -15,6 +15,7 @@ import { ClassDot, ClassLegend } from '../charts/ClassViews';
 import { LIVE_CHART_CAPACITY, LiveChart, type LiveBeat } from '../charts/LiveChart';
 import { FormError, Placeholder } from '../components/Field';
 import { SaveImageControl } from '../components/SaveImageControl';
+import { Segmented, type SegmentOption } from '../components/Segmented';
 import { formatDuration, formatPercent } from '../../format';
 
 interface SessionBeat extends LiveBeat {
@@ -25,10 +26,10 @@ type ConnectionStatus = 'idle' | 'connecting' | 'connected';
 
 const MAX_SESSION_BEATS = 5000;
 
-const SOURCE_LABELS: Record<HeartRateSourceKind, string> = {
-  bluetooth: 'Pixel Watch (Bluetooth)',
-  simulator: 'Симулятор пульсу',
-};
+const SOURCES: readonly SegmentOption<HeartRateSourceKind>[] = [
+  { value: 'bluetooth', label: 'Годинник' },
+  { value: 'simulator', label: 'Симулятор' },
+];
 
 function createSource(kind: HeartRateSourceKind): HeartRateSource {
   return kind === 'bluetooth' ? new BluetoothHeartRateSource() : new SimulatedHeartRateSource();
@@ -48,7 +49,6 @@ export function WatchTab() {
   const [kind, setKind] = useState<HeartRateSourceKind>(bluetoothSupported ? 'bluetooth' : 'simulator');
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [deviceName, setDeviceName] = useState<string | null>(null);
-  const [usesIntervals, setUsesIntervals] = useState<boolean | null>(null);
   const [beats, setBeats] = useState<readonly SessionBeat[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<{ readonly number: number; readonly total: number } | null>(null);
@@ -56,6 +56,7 @@ export function WatchTab() {
   const source = useRef<HeartRateSource | null>(null);
   const beatsRef = useRef<readonly SessionBeat[]>([]);
   const lastLabel = useRef<RhythmClass | null>(null);
+  const payloadLogged = useRef(false);
   const modelRef = useRef(model);
   modelRef.current = model;
   const chartRef = useRef<SVGSVGElement>(null);
@@ -63,7 +64,15 @@ export function WatchTab() {
   useEffect(() => () => source.current?.disconnect(), []);
 
   const handleSample = (sample: HeartRateSample): void => {
-    setUsesIntervals(sample.rrIntervalsMs.length > 0);
+    if (!payloadLogged.current) {
+      payloadLogged.current = true;
+      log(
+        'info',
+        sample.rrIntervalsMs.length > 0
+          ? 'Пристрій передає RR-інтервали: частота рахується для кожного окремого удару.'
+          : 'Пристрій передає усереднений пульс без RR-інтервалів, приблизно раз на секунду.',
+      );
+    }
     const next = beatsRef.current.slice();
     sampleToBeats(sample).forEach((bpm, index) => {
       // Нуль і завеликі значення годинник надсилає, коли втрачає контакт зі шкірою
@@ -78,7 +87,7 @@ export function WatchTab() {
         if (label !== lastLabel.current) {
           log(
             'info',
-            `Годинник: ритм за останніми ${WINDOW_SIZE} значеннями [${window.join(', ')}] — ` +
+            `Годинник: ритм за останніми ${WINDOW_SIZE} значеннями [${window.join(', ')}]: ` +
               `${CLASS_LABELS[label]}, впевненість ${formatPercent(confidence)}.`,
           );
           lastLabel.current = label;
@@ -93,6 +102,7 @@ export function WatchTab() {
   const finishSession = (): void => {
     source.current = null;
     lastLabel.current = null;
+    payloadLogged.current = false;
     setStatus('idle');
     setDeviceName(null);
   };
@@ -145,7 +155,6 @@ export function WatchTab() {
     beatsRef.current = [];
     lastLabel.current = null;
     setBeats([]);
-    setUsesIntervals(null);
   };
 
   const saveSession = (): void => {
@@ -156,158 +165,131 @@ export function WatchTab() {
 
   const last = beats.at(-1);
   const first = beats[0];
-  const busy = status !== 'idle';
   const bluetoothUnavailable = kind === 'bluetooth' && !bluetoothSupported;
+  const connectionText =
+    status === 'connected'
+      ? `Підключено: ${deviceName}`
+      : attempt && attempt.number > 1
+        ? `Підключення… спроба ${attempt.number} з ${attempt.total}`
+        : 'Підключення…';
 
   return (
     <div className="tab-layout">
-      <section className="panel controls" aria-labelledby="watch-controls-title">
-        <h2 id="watch-controls-title">Джерело пульсу</h2>
+      <aside className="side" aria-label="Джерело пульсу">
+        <Segmented
+          label="Джерело пульсу"
+          name="heart-rate-source"
+          value={kind}
+          options={SOURCES}
+          onChange={setKind}
+          disabled={status !== 'idle'}
+        />
 
-        <fieldset className="field">
-          <legend>Звідки брати пульс</legend>
-          {(Object.keys(SOURCE_LABELS) as HeartRateSourceKind[]).map((option) => (
-            <label className="check" key={option}>
-              <input
-                type="radio"
-                name="heart-rate-source"
-                checked={kind === option}
-                disabled={busy}
-                onChange={() => setKind(option)}
-              />
-              <span>
-                <strong>{SOURCE_LABELS[option]}</strong>
-                {option === 'bluetooth'
-                  ? ' — справжній пульс із годинника на руці'
-                  : ' — несправжні дані за сценарієм: спокій, навантаження, відновлення, повільний ритм'}
-              </span>
-            </label>
-          ))}
-        </fieldset>
-
-        {kind === 'bluetooth' && (
-          <ol className="steps">
-            <li>
-              На годиннику проведіть униз від циферблата, відкрийте <strong>Connected Fitness</strong> і натисніть{' '}
-              <strong>Connect</strong>. Першого разу увімкніть <strong>Wider device access</strong>. Не закривайте цей
-              екран, доки триває підключення.
-            </li>
-            <li>Натисніть «Підключити» нижче й оберіть годинник у вікні браузера.</li>
-            <li>
-              Підтвердьте пристрій на годиннику. Якщо Windows покаже сповіщення про створення пари або попросить PIN,
-              погодьтеся. Зв’язок може встановитися не з першої спроби — застосунок повторює її сам.
-            </li>
-          </ol>
-        )}
-        {bluetoothUnavailable && (
-          <p className="notice" role="status">
-            Цей браузер не підтримує Web Bluetooth. Відкрийте застосунок у Chrome або Edge на комп’ютері з Bluetooth чи
-            оберіть симулятор.
-          </p>
-        )}
-
-        <div className="button-row">
+        {status === 'connected' ? (
+          <button type="button" className="button button-stop" onClick={disconnect}>
+            Від’єднати
+          </button>
+        ) : (
           <button
             type="button"
             className="button button-primary"
-            disabled={busy || bluetoothUnavailable}
+            disabled={status === 'connecting' || bluetoothUnavailable}
             onClick={() => void connect()}
           >
-            {status === 'connecting' ? 'Підключення…' : 'Підключити'}
+            Підключити
           </button>
-          <button type="button" className="button" disabled={status !== 'connected'} onClick={disconnect}>
-            Від’єднати
-          </button>
-        </div>
-        <p className="connection" role="status">
-          <span className={status === 'connected' ? 'connection-dot connection-dot-on' : 'connection-dot'} />
-          {status === 'connected'
-            ? `Підключено: ${deviceName}`
-            : status === 'connecting'
-              ? attempt && attempt.number > 1
-                ? `Підключення… спроба ${attempt.number} з ${attempt.total}`
-                : 'Підключення…'
-              : 'Не підключено'}
-        </p>
+        )}
+        {status !== 'idle' && (
+          <p className="connection" role="status">
+            <span className={status === 'connected' ? 'connection-dot connection-dot-on' : 'connection-dot'} />
+            {connectionText}
+          </p>
+        )}
         {status === 'connecting' && kind === 'bluetooth' && (
           <p className="notice" role="status">
-            Подивіться на годинник: якщо він запитує про з’єднання, підтвердьте його. Екран Connected Fitness має
-            лишатися відкритим.
+            Якщо годинник запитує про з’єднання, підтвердьте його. Екран Connected Fitness має лишатися відкритим.
+          </p>
+        )}
+        {bluetoothUnavailable && (
+          <p className="notice" role="status">
+            Цей браузер не підтримує Web Bluetooth. Відкрийте застосунок у Chrome або Edge чи оберіть симулятор.
           </p>
         )}
         <FormError message={error} />
-        {!model && (
-          <p className="field-hint">
-            Моделі ще немає: пульс відображатиметься, але клас ритму з’явиться після навчання мережі.
-          </p>
+
+        {kind === 'bluetooth' && !bluetoothUnavailable && (
+          <details className="help">
+            <summary>Як підключити годинник</summary>
+            <ol className="steps">
+              <li>
+                На годиннику проведіть униз від циферблата, відкрийте <strong>Connected Fitness</strong> і натисніть{' '}
+                <strong>Connect</strong>. Першого разу ввімкніть <strong>Wider device access</strong>.
+              </li>
+              <li>Натисніть «Підключити» й оберіть годинник у вікні браузера.</li>
+              <li>
+                Підтвердьте пристрій на годиннику. Якщо Windows запропонує створити пару або попросить PIN, погодьтеся.
+              </li>
+            </ol>
+          </details>
         )}
 
-        <hr />
-
-        <div className="button-row">
-          <button type="button" className="button" disabled={beats.length === 0} onClick={saveSession}>
-            Зберегти сесію (CSV)
-          </button>
-          <button type="button" className="button" disabled={beats.length === 0} onClick={clearSession}>
-            Очистити сесію
-          </button>
+        <div className="side-group">
+          <span className="side-label">Сесія</span>
+          <div className="button-row">
+            <button type="button" className="button" disabled={beats.length === 0} onClick={saveSession}>
+              Зберегти сесію (CSV)
+            </button>
+            <button type="button" className="button" disabled={beats.length === 0} onClick={clearSession}>
+              Очистити
+            </button>
+          </div>
         </div>
-      </section>
+      </aside>
 
-      <section className="panel results" aria-labelledby="watch-results-title">
-        <header className="panel-header">
-          <h2 id="watch-results-title">Пульс у реальному часі</h2>
-        </header>
-
+      <section className="content" aria-label="Пульс у реальному часі">
         {!last || !first ? (
           <Placeholder title="Даних ще немає">
-            Після підключення тут з’являться поточний пульс, графік останніх {LIVE_CHART_CAPACITY} значень і клас ритму,
-            який мережа визначає за кожними {WINDOW_SIZE} останніми значеннями.
+            Після підключення тут з’являться поточний пульс, клас ритму за останніми {WINDOW_SIZE} значеннями та графік.
           </Placeholder>
         ) : (
           <>
-            <div className="stats">
-              <div className="stat">
-                <div className="stat-label">Поточний пульс</div>
-                <div className="stat-value stat-value-hero">{last.bpm}</div>
-                <div className="stat-note">уд/хв</div>
+            <dl className="facts">
+              <div className="fact fact-primary">
+                <dt>Пульс</dt>
+                <dd>
+                  {last.bpm} <span className="fact-unit">уд/хв</span>
+                </dd>
               </div>
-              <div className="stat">
-                <div className="stat-label">Ритм за останніми {WINDOW_SIZE} значеннями</div>
-                {last.label && last.confidence !== null ? (
-                  <>
-                    <div className="stat-value stat-value-class">
+              <div className="fact">
+                <dt>Ритм за останніми {WINDOW_SIZE} значеннями</dt>
+                <dd>
+                  {last.label && last.confidence !== null ? (
+                    <>
                       <ClassDot rhythm={last.label} />
                       {CLASS_LABELS[last.label]}
-                    </div>
-                    <div className="stat-note">впевненість {formatPercent(last.confidence)}</div>
-                  </>
-                ) : (
-                  <div className="stat-note">
-                    {model
-                      ? `потрібно ще ${Math.max(1, WINDOW_SIZE - beats.length)} значень`
-                      : 'потрібна навчена модель'}
-                  </div>
-                )}
+                      <span className="fact-unit">{formatPercent(last.confidence)}</span>
+                    </>
+                  ) : (
+                    <span className="fact-unit fact-unit-only">
+                      {model ? `ще ${Math.max(1, WINDOW_SIZE - beats.length)} значень` : 'потрібна навчена модель'}
+                    </span>
+                  )}
+                </dd>
               </div>
-              <div className="stat">
-                <div className="stat-label">Отримано значень</div>
-                <div className="stat-value">{beats.length}</div>
-                <div className="stat-note">за {formatDuration(last.at - first.at)}</div>
+              <div className="fact">
+                <dt>Отримано значень</dt>
+                <dd>
+                  {beats.length} <span className="fact-unit">за {formatDuration(last.at - first.at)}</span>
+                </dd>
               </div>
-              <div className="stat">
-                <div className="stat-label">Що передає пристрій</div>
-                <div className="stat-value stat-value-class">{usesIntervals ? 'RR-інтервали' : 'Частоту'}</div>
-                <div className="stat-note">
-                  {usesIntervals ? 'частота кожного окремого удару' : 'усереднений пульс, приблизно раз на секунду'}
-                </div>
-              </div>
-            </div>
+            </dl>
 
             <div className="figure-block">
               <LiveChart beats={beats.slice(-LIVE_CHART_CAPACITY)} svgRef={chartRef} />
-              <ClassLegend />
-              <SaveImageControl svgRef={chartRef} baseName="watch" subject="графік пульсу" />
+              <div className="figure-footer">
+                <ClassLegend />
+                <SaveImageControl svgRef={chartRef} baseName="watch" subject="графік пульсу" />
+              </div>
             </div>
           </>
         )}
