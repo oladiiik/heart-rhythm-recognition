@@ -1,6 +1,6 @@
 import type { LabeledSequence } from '../domain/generator';
 import type { EvaluationMetrics } from '../domain/metrics';
-import type { ModelSnapshot, TrainingConfig } from './model';
+import type { EpochStatus, ModelSnapshot, TrainingConfig } from './model';
 
 export interface TrainRequest {
   readonly type: 'train';
@@ -28,6 +28,7 @@ export interface TrainingResult {
   readonly type: 'done';
   readonly snapshot: ModelSnapshot;
   readonly metrics: EvaluationMetrics;
+  readonly history: readonly EpochStatus[];
   readonly trainMs: number;
   readonly evaluationMs: number;
 }

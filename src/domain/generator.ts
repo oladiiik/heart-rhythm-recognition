@@ -90,13 +90,7 @@ export function generateSequence(
 
   const values: number[] = [];
   for (let i = 0; i < length; i++) {
-    values.push(
-      profile === 'noisy'
-        ? randomInt(random, minRate, maxRate)
-        : random() < 0.5
-          ? maxRate
-          : minRate,
-    );
+    values.push(profile === 'noisy' ? randomInt(random, minRate, maxRate) : random() < 0.5 ? maxRate : minRate);
   }
   return { values, label: rhythm, profile };
 }

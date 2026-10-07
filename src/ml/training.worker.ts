@@ -1,7 +1,7 @@
 import { emptyConfusionMatrix, summarize, type EvaluationMetrics } from '../domain/metrics';
 import { mostLikelyClass } from '../domain/rhythm';
 import type { LabeledSequence } from '../domain/generator';
-import { RhythmModel } from './model';
+import { RhythmModel, type EpochStatus } from './model';
 import type { TrainRequest, WorkerRequest, WorkerResponse } from './protocol';
 
 interface WorkerScope {
@@ -12,6 +12,7 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope;
 
 const PROGRESS_INTERVAL_MS = 40;
+const MAX_HISTORY_POINTS = 400;
 
 function createThrottle(): (isLast: boolean) => boolean {
   let lastSentAt = -Infinity;
@@ -37,13 +38,22 @@ function evaluate(model: RhythmModel, test: readonly LabeledSequence[]): Evaluat
   return summarize(confusion);
 }
 
+/** Рівномірно проріджує історію похибки, завжди зберігаючи першу й останню епоху */
+function downsample(history: readonly EpochStatus[]): EpochStatus[] {
+  if (history.length <= MAX_HISTORY_POINTS) return history.slice();
+  const step = (history.length - 1) / (MAX_HISTORY_POINTS - 1);
+  return Array.from({ length: MAX_HISTORY_POINTS }, (_, i) => history[Math.round(i * step)] as EpochStatus);
+}
+
 function runTraining(request: TrainRequest): void {
   const { config } = request;
   const model = RhythmModel.untrained(config.hiddenNeurons);
   const shouldReport = createThrottle();
+  const history: EpochStatus[] = [];
 
   const trainStartedAt = performance.now();
   const outcome = model.train(request.train, config, ({ epoch, error }) => {
+    history.push({ epoch, error });
     if (shouldReport(epoch === config.epochs)) {
       scope.postMessage({ type: 'epoch', epoch, totalEpochs: config.epochs, error });
     }
@@ -73,6 +83,7 @@ function runTraining(request: TrainRequest): void {
       metrics,
     }),
     metrics,
+    history: downsample(history),
     trainMs,
     evaluationMs,
   });

@@ -150,8 +150,7 @@ export class RhythmModel {
     const output = this.network.run(normalizeSequence(values));
     let sum = 0;
     for (let i = 0; i < RHYTHM_CLASSES.length; i++) sum += output[i] ?? 0;
-    const share = (index: number): number =>
-      sum > 0 ? (output[index] ?? 0) / sum : 1 / RHYTHM_CLASSES.length;
+    const share = (index: number): number => (sum > 0 ? (output[index] ?? 0) / sum : 1 / RHYTHM_CLASSES.length);
     return { bradycardia: share(0), normal: share(1), tachycardia: share(2) };
   }
 

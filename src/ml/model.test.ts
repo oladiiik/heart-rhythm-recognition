@@ -40,7 +40,9 @@ describe('RhythmModel', () => {
   });
 
   it('після навчання правильно розпізнає більшість тестових послідовностей', () => {
-    const correct = test.filter((sequence) => mostLikelyClass(model.classifyWindow(sequence.values)) === sequence.label);
+    const correct = test.filter(
+      (sequence) => mostLikelyClass(model.classifyWindow(sequence.values)) === sequence.label,
+    );
     expect(correct.length / test.length).toBeGreaterThan(0.9);
   });
 

@@ -1,10 +1,4 @@
-import type {
-  EpochProgress,
-  EvaluationProgress,
-  TrainRequest,
-  TrainingResult,
-  WorkerResponse,
-} from './protocol';
+import type { EpochProgress, EvaluationProgress, TrainRequest, TrainingResult, WorkerResponse } from './protocol';
 
 export interface TrainingHandlers {
   onEpoch(progress: EpochProgress): void;
