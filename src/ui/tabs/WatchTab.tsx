@@ -51,6 +51,7 @@ export function WatchTab() {
   const [usesIntervals, setUsesIntervals] = useState<boolean | null>(null);
   const [beats, setBeats] = useState<readonly SessionBeat[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState<{ readonly number: number; readonly total: number } | null>(null);
 
   const source = useRef<HeartRateSource | null>(null);
   const beatsRef = useRef<readonly SessionBeat[]>([]);
@@ -102,6 +103,10 @@ export function WatchTab() {
     const next = createSource(kind);
     try {
       const name = await next.connect({
+        onAttempt: (number, total) => {
+          setAttempt({ number, total });
+          if (number > 1) log('info', `Пристрій розірвав зв’язок під час підключення; спроба ${number} з ${total}.`);
+        },
         onSample: handleSample,
         onDisconnected: () => {
           finishSession();
@@ -121,8 +126,12 @@ export function WatchTab() {
         return;
       }
       const message = cause instanceof Error ? cause.message : String(cause);
-      setError(`Не вдалося підключитися: ${message}`);
-      log('error', `Не вдалося підключити джерело пульсу: ${message}`);
+      const reason =
+        cause instanceof Error && cause.cause instanceof Error ? ` Відповідь браузера: ${cause.cause.message}` : '';
+      setError(`Не вдалося підключитися. ${message}`);
+      log('error', `Не вдалося підключити джерело пульсу. ${message}${reason}`);
+    } finally {
+      setAttempt(null);
     }
   };
 
@@ -180,10 +189,14 @@ export function WatchTab() {
           <ol className="steps">
             <li>
               На годиннику проведіть униз від циферблата, відкрийте <strong>Connected Fitness</strong> і натисніть{' '}
-              <strong>Connect</strong>. Першого разу увімкніть <strong>Wider device access</strong>.
+              <strong>Connect</strong>. Першого разу увімкніть <strong>Wider device access</strong>. Не закривайте цей
+              екран, доки триває підключення.
             </li>
             <li>Натисніть «Підключити» нижче й оберіть годинник у вікні браузера.</li>
-            <li>Якщо годинник запитає дозвіл, підтвердьте з’єднання.</li>
+            <li>
+              Підтвердьте пристрій на годиннику. Якщо Windows покаже сповіщення про створення пари або попросить PIN,
+              погодьтеся. Зв’язок може встановитися не з першої спроби — застосунок повторює її сам.
+            </li>
           </ol>
         )}
         {bluetoothUnavailable && (
@@ -211,9 +224,17 @@ export function WatchTab() {
           {status === 'connected'
             ? `Підключено: ${deviceName}`
             : status === 'connecting'
-              ? 'Підключення…'
+              ? attempt && attempt.number > 1
+                ? `Підключення… спроба ${attempt.number} з ${attempt.total}`
+                : 'Підключення…'
               : 'Не підключено'}
         </p>
+        {status === 'connecting' && kind === 'bluetooth' && (
+          <p className="notice" role="status">
+            Подивіться на годинник: якщо він запитує про з’єднання, підтвердьте його. Екран Connected Fitness має
+            лишатися відкритим.
+          </p>
+        )}
         <FormError message={error} />
         {!model && (
           <p className="field-hint">

@@ -5,6 +5,7 @@ export interface HeartRateSample {
 }
 
 export interface HeartRateListener {
+  onAttempt(attempt: number, total: number): void;
   onSample(sample: HeartRateSample): void;
   onDisconnected(): void;
 }
