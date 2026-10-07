@@ -9,7 +9,7 @@ import { FileDrop } from '../components/FileDrop';
 import { FormError, NumberField, Placeholder } from '../components/Field';
 import { InfoPopover, type InfoRow } from '../components/InfoPopover';
 import { SaveImageControl } from '../components/SaveImageControl';
-import { formatDuration, formatNumber, formatPercent } from '../../format';
+import { formatDuration, formatExact, formatNumber, formatPercent } from '../../format';
 
 /** Поділ на навчальну й тестову частини фіксований, щоб досліди з різними параметрами були порівнянними */
 const SPLIT_SEED = 1;
@@ -23,8 +23,8 @@ function modelInfo(state: ModelState): InfoRow[] {
       value: `${WINDOW_SIZE} входи – ${summary.config.hiddenNeurons} прихованих нейронів – ${RHYTHM_CLASSES.length} виходи`,
     },
     { label: 'Епох виконано', value: `${summary.epochsRun} із ${summary.config.epochs}` },
-    { label: 'Швидкість навчання', value: summary.config.learningRate },
-    { label: 'Поріг похибки', value: summary.config.errorThreshold },
+    { label: 'Швидкість навчання', value: formatExact(summary.config.learningRate) },
+    { label: 'Поріг похибки', value: formatExact(summary.config.errorThreshold) },
     { label: 'Кінцева похибка', value: formatNumber(summary.finalError, 5) },
     { label: 'Навчальних послідовностей', value: summary.trainedOn },
     { label: 'Час навчання', value: formatDuration(summary.trainMs) },
@@ -34,7 +34,7 @@ function modelInfo(state: ModelState): InfoRow[] {
     rows.push(
       { label: 'Назва файла', value: state.file.name },
       { label: 'Розмір файла', value: formatFileSize(state.file.sizeBytes) },
-      { label: 'Тип файла', value: state.file.type },
+      { label: 'Розширення файла', value: state.file.extension },
     );
   }
   return rows;
@@ -235,7 +235,7 @@ export function TrainTab() {
               <div className="stat">
                 <div className="stat-label">Кінцева похибка</div>
                 <div className="stat-value">{formatNumber(summary.finalError, 4)}</div>
-                <div className="stat-note">поріг {summary.config.errorThreshold}</div>
+                <div className="stat-note">поріг {formatExact(summary.config.errorThreshold)}</div>
               </div>
               <div className="stat">
                 <div className="stat-label">Час навчання</div>

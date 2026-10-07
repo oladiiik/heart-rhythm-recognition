@@ -73,7 +73,7 @@ function datasetInfo(dataset: DatasetState): InfoRow[] {
     { label: 'Джерело', value: 'завантажено з файла' },
     { label: 'Назва файла', value: source.file.name },
     { label: 'Розмір файла', value: formatFileSize(source.file.sizeBytes) },
-    { label: 'Тип файла', value: source.file.type },
+    { label: 'Розширення файла', value: source.file.extension },
     { label: 'Файл змінено', value: source.file.lastModified.toLocaleString('uk-UA') },
     ...common,
   ];

@@ -2,6 +2,10 @@ export function formatNumber(value: number, digits: number = 2): string {
   return value.toFixed(digits).replace('.', ',');
 }
 
+export function formatExact(value: number): string {
+  return String(value).replace('.', ',');
+}
+
 export function formatPercent(share: number, digits: number = 1): string {
   return `${formatNumber(share * 100, digits)}%`;
 }

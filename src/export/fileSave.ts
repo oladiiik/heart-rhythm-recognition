@@ -1,3 +1,5 @@
+import { formatNumber } from '../format';
+
 export function saveBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -24,6 +26,6 @@ export function fileTimestamp(date: Date = new Date()): string {
 
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} МБ`;
+  if (bytes < 1024 * 1024) return `${formatNumber(bytes / 1024, 1)} КБ`;
+  return `${formatNumber(bytes / (1024 * 1024))} МБ`;
 }

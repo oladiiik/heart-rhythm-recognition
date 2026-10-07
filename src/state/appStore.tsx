@@ -12,12 +12,12 @@ import {
   type TrainingConfig,
 } from '../ml/model';
 import { startTraining, type TrainingJob } from '../ml/trainingClient';
-import { formatDuration, formatNumber, formatPercent } from '../format';
+import { formatDuration, formatExact, formatNumber, formatPercent } from '../format';
 
 export interface FileInfo {
   readonly name: string;
   readonly sizeBytes: number;
-  readonly type: string;
+  readonly extension: string;
   readonly lastModified: Date;
 }
 
@@ -144,11 +144,16 @@ interface AppContextValue extends AppState, AppActions {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+function extensionOf(fileName: string): string {
+  const dot = fileName.lastIndexOf('.');
+  return dot > 0 ? fileName.slice(dot).toLowerCase() : 'немає';
+}
+
 export function fileInfoOf(file: File): FileInfo {
   return {
     name: file.name,
     sizeBytes: file.size,
-    type: file.type || 'невідомий',
+    extension: extensionOf(file.name),
     lastModified: new Date(file.lastModified),
   };
 }
@@ -218,8 +223,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       log(
         'info',
         `Навчання розпочато: ${trainSet.length} навчальних і ${testSet.length} тестових послідовностей, ` +
-          `епох ${config.epochs}, швидкість навчання ${config.learningRate}, ` +
-          `прихованих нейронів ${config.hiddenNeurons}, поріг похибки ${config.errorThreshold}.`,
+          `епох ${config.epochs}, швидкість навчання ${formatExact(config.learningRate)}, ` +
+          `прихованих нейронів ${config.hiddenNeurons}, поріг похибки ${formatExact(config.errorThreshold)}.`,
       );
 
       job.current = startTraining(
