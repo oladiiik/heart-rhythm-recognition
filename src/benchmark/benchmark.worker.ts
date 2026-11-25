@@ -10,7 +10,7 @@ import {
   type PerformanceTask,
 } from './performance';
 import type { BenchmarkRequest, BenchmarkResponse } from './protocol';
-import { TEST_SET, trainingSetOf, type CheckpointResult, type QualityTask } from './quality';
+import { TEST_SET, VALIDATION_SET, trainingSetOf, type CheckpointResult, type QualityTask } from './quality';
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<BenchmarkRequest>) => void) | null;
@@ -22,6 +22,7 @@ const scope = self as unknown as WorkerScope;
 const PROGRESS_INTERVAL_MS = 100;
 
 // Воркер обробляє завдання одне за одним, тому підготовлене для першого завдання знадобиться й наступним
+let validationSet: LabeledSequence[] | null = null;
 let testSet: LabeledSequence[] | null = null;
 let referenceModel: RhythmModel | null = null;
 const files = new Map<string, Blob>();
@@ -35,10 +36,12 @@ function reportProgress(taskId: number): (fraction: number) => void {
 
 /**
  * Одне навчання до найбільшої контрольної епохи. На кожній контрольній епосі навчання призупиняється,
- * мережа перевіряється на тестовому наборі, і цей час не входить у час навчання
+ * мережа перевіряється на валідаційному й тестовому наборах, і цей час не входить у час навчання
  */
 function runQuality(task: QualityTask): void {
+  validationSet ??= generateDataset(VALIDATION_SET);
   testSet ??= generateDataset(TEST_SET);
+  const validation = validationSet;
   const test = testSet;
   const train = trainingSetOf(task.train);
   const epochs = task.checkpoints.at(-1) ?? 0;
@@ -54,8 +57,9 @@ function runQuality(task: QualityTask): void {
     ({ epoch, error }) => {
       if (checkpoints.has(epoch)) {
         const pausedAt = performance.now();
-        const { accuracy } = evaluateModel(model, test);
-        results.push({ epoch, accuracy, error, trainMs: pausedAt - startedAt - pausedMs });
+        const { accuracy } = evaluateModel(model, validation);
+        const { accuracy: testAccuracy } = evaluateModel(model, test);
+        results.push({ epoch, accuracy, testAccuracy, error, trainMs: pausedAt - startedAt - pausedMs });
         pausedMs += performance.now() - pausedAt;
       }
       progress(epoch / epochs);
@@ -77,10 +81,11 @@ function fileFor(task: PerformanceTask): Blob {
 /** Файл і модель готуються до початку відліку, тож у заміряний час не входять */
 async function runPerformance(task: PerformanceTask): Promise<void> {
   const file = fileFor(task);
+  const label = `${task.pipeline} ${task.size.key} ${task.run + 1}`;
   const measurement =
     task.pipeline === 'recognition'
-      ? await measureRecognition(file, (referenceModel ??= trainReferenceModel()))
-      : await measureTraining(file, task.epochs);
+      ? await measureRecognition(file, (referenceModel ??= trainReferenceModel()), label)
+      : await measureTraining(file, task.epochs, label);
   scope.postMessage({ type: 'performance-done', trial: { taskId: task.id, ...measurement } });
 }
 

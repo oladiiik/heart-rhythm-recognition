@@ -1,5 +1,7 @@
+import { PROFILE_LABELS } from '../../domain/generator';
 import {
   PROFILE_SETS,
+  profileSetOf,
   type QualityExperiment,
   type QualityExperimentId,
   type QualityFixed,
@@ -48,6 +50,8 @@ export function describeFixed(experiment: QualityExperiment, fixed: QualityFixed
           return `прихованих нейронів ${fixed.hiddenNeurons}`;
         case 'perClass':
           return `послідовностей на клас ${fixed.perClass}`;
+        case 'profiles':
+          return `профілі «${profileSetOf(fixed.profiles)?.label ?? fixed.profiles.map((p) => PROFILE_LABELS[p]).join(', ')}»`;
       }
     })
     .join(', ');

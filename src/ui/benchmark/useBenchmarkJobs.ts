@@ -14,11 +14,12 @@ import {
 } from '../../benchmark/performance';
 import {
   QUALITY_EXPERIMENTS,
-  TEST_SET_SIZE,
+  VALIDATION_SET_SIZE,
   aggregateQuality,
   buildQualityTasks,
   judgeQuality,
   validateQualityPlan,
+  type QualityCell,
   type QualityExperimentId,
   type QualityPlan,
   type QualityTask,
@@ -182,20 +183,22 @@ export function useBenchmarkJobs() {
         startMessage: (workers) =>
           `Дослід «${experiment.label}» розпочато: ${tasks.length} ${plural(tasks.length, 'навчання', 'навчання', 'навчань')} ` +
           `у ${workers} ${plural(workers, 'потоці', 'потоках', 'потоках')}, кожна точка ${plan.repeats} ${plural(plan.repeats, 'раз', 'рази', 'разів')}; ${fixedText}; ` +
-          `тестовий набір ${TEST_SET_SIZE} послідовностей.`,
+          `валідаційний і тестовий набори по ${VALIDATION_SET_SIZE} послідовностей.`,
         finish: (trials) => {
           const cells = aggregateQuality(experiment, tasks, trials);
-          const verdict = judgeQuality(cells, plan.repeats, TEST_SET_SIZE);
+          const verdict = judgeQuality(cells, plan.repeats);
           if (!verdict) return { detail: 'немає повних результатів', message: 'Повних результатів немає.' };
-          const best = `${describeCell(experiment, verdict.best)} (${formatPercent(verdict.best.accuracy.mean)})`;
-          const cheapest = `${describeCell(experiment, verdict.cheapest)} (${formatPercent(verdict.cheapest.accuracy.mean)})`;
+          const accuracies = (cell: QualityCell): string =>
+            `валідація ${formatPercent(cell.accuracy.mean)}, тест ${formatPercent(cell.testAccuracy.mean)}`;
+          const best = `${describeCell(experiment, verdict.best)} (${accuracies(verdict.best)})`;
+          const recommended = `${describeCell(experiment, verdict.recommended)} (${accuracies(verdict.recommended)})`;
           return {
             detail: `найкраща точність ${formatPercent(verdict.best.accuracy.mean)}`,
             message:
               `Найкраща середня точність: ${best}. ` +
-              (verdict.cheapest === verdict.best
-                ? 'Рівноцінного дешевшого варіанта немає.'
-                : `Найдешевший рівноцінний варіант: ${cheapest}.`),
+              (verdict.recommended === verdict.best
+                ? 'Рекомендований варіант збігається з найкращим.'
+                : `Рекомендований варіант: ${recommended}.`),
           };
         },
       });

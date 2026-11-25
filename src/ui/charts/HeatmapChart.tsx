@@ -26,7 +26,7 @@ interface HeatmapChartProps<C> {
   /** Клітинки, рівноцінні найкращій: їхні значення виділено жирним */
   readonly isEquivalent: (cell: C) => boolean;
   readonly best: HeatmapCellRef | null;
-  readonly cheapest: HeatmapCellRef | null;
+  readonly recommended: HeatmapCellRef | null;
   /** Підписи кінців шкали кольору */
   readonly scaleLabels: readonly [string, string];
   readonly renderTooltip: (row: HeatmapRow, col: number, cell: C) => ReactNode;
@@ -56,7 +56,7 @@ function HeatmapPlot<C>({
   formatCell,
   isEquivalent,
   best,
-  cheapest,
+  recommended,
   scaleLabels,
   renderTooltip,
   svgRef,
@@ -71,7 +71,7 @@ function HeatmapPlot<C>({
   const fontSize = Math.min(13, Math.max(10, cellWidth / 5.5));
   const isSame = (a: HeatmapCellRef | null, row: string, col: number): boolean => a?.row === row && a.col === col;
   const outlineOf = (row: string, col: number): 'solid' | 'dashed' | null =>
-    isSame(best, row, col) ? 'solid' : isSame(cheapest, row, col) ? 'dashed' : null;
+    isSame(best, row, col) ? 'solid' : isSame(recommended, row, col) ? 'dashed' : null;
 
   const hoveredRow = hovered ? rows.find((row) => row.key === hovered.row) : undefined;
   const hoveredCell = hovered ? cellAt(hovered.row, hovered.col) : undefined;
@@ -109,7 +109,7 @@ function HeatmapPlot<C>({
             strokeDasharray="4 2"
           />
           <text x={126} y={51}>
-            найдешевша рівноцінна
+            рекомендована
           </text>
           <text x={0} y={72} fill={CHART.secondary}>
             жирним: рівноцінні найкращій

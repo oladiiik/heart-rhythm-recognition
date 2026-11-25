@@ -5,6 +5,9 @@ import {
   TEST_SET,
   TEST_SET_SIZE,
   TRAIN_TOLERANCE,
+  VALIDATION_SET,
+  VALIDATION_SET_SIZE,
+  isEquivalent,
   trainSeedOf,
   type QualityCell,
   type QualityExperiment,
@@ -13,7 +16,7 @@ import {
 import { formatDuration, formatExact, formatNumber, formatPercent, plural } from '../../format';
 import { HeatmapChart } from '../charts/HeatmapChart';
 import { SweepChart, type SweepMark, type SweepSeries } from '../charts/SweepChart';
-import { CATEGORICAL, CHART, ORDINAL_BLUE } from '../charts/chartTheme';
+import { CATEGORICAL, CHART } from '../charts/chartTheme';
 import { stepDecimals } from '../charts/scales';
 import { Placeholder } from '../components/Field';
 import { InfoPopover, type InfoRow } from '../components/InfoPopover';
@@ -43,13 +46,20 @@ const EXPERIMENT_PURPOSE: Record<QualityExperiment['id'], string> = {
 };
 
 const PURPOSE_TAIL =
-  `Точність щоразу перевіряють на тих самих ${TEST_SET_SIZE} тестових послідовностях, яких мережа не бачила. ` +
+  `Варіанти порівнюють за точністю на тих самих ${VALIDATION_SET_SIZE} валідаційних послідовностях, яких мережа не бачила; ` +
+  `окремий тестовий набір (${TEST_SET_SIZE} послідовностей) на вибір не впливає й дає чесну оцінку обраного варіанта. ` +
   'Кожну точку навчають кілька разів з іншим набором і початковими вагами: розкид між запусками показує, яку різницю дає сама випадковість.';
 
 function seriesColor(experiment: QualityExperiment, index: number): string {
   if (experiment.series.length === 1) return CHART.series;
-  return (experiment.id === 'epochs' ? ORDINAL_BLUE[index] : CATEGORICAL[index]) ?? CHART.series;
+  return CATEGORICAL[index] ?? CHART.series;
 }
+
+/**
+ * З якої кількості епох показати точність ще раз у збільшеному масштабі: на загальному графіку вісь іде
+ * від десятків відсотків, і різниці в десяті частки пункту між швидкостями на плато не видно
+ */
+const ZOOM_FROM_EPOCH = 500;
 
 function conditions(experiment: QualityExperiment, run: QualityRun): InfoRow[] {
   const { plan } = run;
@@ -62,6 +72,10 @@ function conditions(experiment: QualityExperiment, run: QualityRun): InfoRow[] {
       label: 'Навчальні набори',
       value: `seed від ${trainSeedOf(0)} до ${trainSeedOf(plan.repeats - 1)}, свій у кожному повторі; допуск ${TRAIN_TOLERANCE} уд/хв`,
     },
+    {
+      label: 'Валідаційний набір',
+      value: `${VALIDATION_SET_SIZE} послідовностей, усі профілі, seed ${VALIDATION_SET.seed}`,
+    },
     { label: 'Тестовий набір', value: `${TEST_SET_SIZE} послідовностей, усі профілі, seed ${TEST_SET.seed}` },
     { label: 'Потоків', value: run.workers },
     ...environmentRows(run.environment),
@@ -70,32 +84,26 @@ function conditions(experiment: QualityExperiment, run: QualityRun): InfoRow[] {
   ];
 }
 
-function thresholdNote(verdict: QualityVerdict): string {
-  const { best } = verdict;
-  return best.accuracy.mean - best.accuracy.min >= 1 / TEST_SET_SIZE
-    ? 'найгірший запуск найкращого'
-    : 'на одну тестову послідовність нижче найкращої';
-}
-
 function savingNote(verdict: QualityVerdict): string {
-  if (verdict.cheapest === verdict.best) return 'той самий варіант';
-  return `обчислень у ${formatNumber(verdict.best.work / verdict.cheapest.work, 1)} раза менше`;
+  if (verdict.recommended === verdict.best) return 'той самий, що й найкращий';
+  return `обчислень у ${formatNumber(verdict.best.work / verdict.recommended.work, 1)} раза менше, ніж для найкращого`;
 }
 
 function verdictLabel(cell: QualityCell, verdict: QualityVerdict | null): string {
   if (!verdict) return '';
-  if (cell === verdict.best) return cell === verdict.cheapest ? 'найкраща й найдешевша' : 'найкраща';
-  if (cell === verdict.cheapest) return 'найдешевша рівноцінна';
-  return cell.accuracy.mean >= verdict.threshold - 1e-9 ? 'рівноцінна' : '';
+  if (cell === verdict.best) return cell === verdict.recommended ? 'найкраща й рекомендована' : 'найкраща';
+  if (cell === verdict.recommended) return 'рекомендована';
+  if (cell === verdict.cheapest) return 'найдешевша рівноцінна, на краю';
+  return isEquivalent(verdict, cell) ? 'рівноцінна' : '';
 }
 
 function marksOf(verdict: QualityVerdict | null): SweepMark[] {
   if (!verdict) return [];
-  const { best, cheapest } = verdict;
-  if (best === cheapest) return [{ series: best.series, x: best.x, label: 'найкраща', dashed: false }];
+  const { best, recommended } = verdict;
+  if (best === recommended) return [{ series: best.series, x: best.x, label: 'найкраща', dashed: false }];
   return [
     { series: best.series, x: best.x, label: 'найкраща', dashed: false },
-    { series: cheapest.series, x: cheapest.x, label: 'найдешевша рівноцінна', dashed: true },
+    { series: recommended.series, x: recommended.x, label: 'рекомендована', dashed: true },
   ];
 }
 
@@ -104,6 +112,7 @@ type CellPoint = QualityCell & { readonly mean: number; readonly min: number; re
 export function QualityResults({ experiment, run, cells, verdict }: QualityResultsProps) {
   const accuracyRef = useRef<SVGSVGElement>(null);
   const sideRef = useRef<SVGSVGElement>(null);
+  const zoomRef = useRef<SVGSVGElement>(null);
 
   if (!run) {
     return (
@@ -126,6 +135,12 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
     }));
   const accuracySeries = seriesOf((cell) => cell.accuracy);
   const marks = marksOf(verdict);
+  const zoomXs = experiment.id === 'epochs' ? experiment.xs.filter((x) => x >= ZOOM_FROM_EPOCH) : [];
+  const zoomSeries = accuracySeries.map((series) => ({
+    ...series,
+    points: series.points.filter((point) => point.x >= ZOOM_FROM_EPOCH),
+  }));
+  const bounds = new Map(verdict?.comparisons.map((c) => [`${c.series}|${c.x}`, c.upperBound]));
   const focus = verdict?.best.series ?? (multiSeries ? null : (experiment.series[0]?.key ?? null));
 
   const cellTooltip = (cell: QualityCell) => (
@@ -138,6 +153,7 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
         точність {formatPercent(cell.accuracy.mean)} (від {formatPercent(cell.accuracy.min)} до{' '}
         {formatPercent(cell.accuracy.max)})
       </span>
+      <span>тест {formatPercent(cell.testAccuracy.mean)}</span>
       <span>
         σ {formatPercent(cell.accuracy.std, 2)}, {cell.accuracy.count}{' '}
         {plural(cell.accuracy.count, 'навчання', 'навчання', 'навчань')}
@@ -147,11 +163,11 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
   );
 
   // Колір теплової карти за часткою помилок у логарифмі: так розрізняються й 95%, і 99%, а не лише 40% і 90%
-  const errorRates = cells.map((cell) => Math.max(1 - cell.accuracy.mean, 1 / TEST_SET_SIZE));
+  const errorRates = cells.map((cell) => Math.max(1 - cell.accuracy.mean, 1 / VALIDATION_SET_SIZE));
   const worstError = Math.max(...errorRates);
   const bestError = Math.min(...errorRates);
   const shade = (cell: QualityCell): number => {
-    const error = Math.max(1 - cell.accuracy.mean, 1 / TEST_SET_SIZE);
+    const error = Math.max(1 - cell.accuracy.mean, 1 / VALIDATION_SET_SIZE);
     return worstError === bestError ? 1 : Math.log(worstError / error) / Math.log(worstError / bestError);
   };
   const cellByKey = new Map(cells.map((cell) => [`${cell.series}|${cell.x}`, cell]));
@@ -165,10 +181,7 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
               <dt>Найкраща середня точність</dt>
               <dd>
                 {formatPercent(verdict.best.accuracy.mean)}
-                <span className="fact-unit">
-                  з {verdict.best.accuracy.count}{' '}
-                  {plural(verdict.best.accuracy.count, 'навчання', 'навчання', 'навчань')}
-                </span>
+                <span className="fact-unit">тест {formatPercent(verdict.best.testAccuracy.mean)}</span>
               </dd>
             </div>
             <div className="fact">
@@ -177,18 +190,21 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
             </div>
             <div
               className="fact"
-              title="Варіанти із середньою точністю не нижче цієї межі відрізняються від найкращого не більше, ніж запуски найкращого між собою"
+              title="Парний тест: верхня межа однобічного 95-відсоткового інтервалу різниці середніх із найкращим не перевищує запасу"
             >
-              <dt>Межа рівноцінності</dt>
+              <dt>Рівноцінних</dt>
               <dd>
-                {formatPercent(verdict.threshold)}
-                <span className="fact-unit">{thresholdNote(verdict)}</span>
+                {verdict.equivalent.length} з {cells.length}
+                <span className="fact-unit">запас {formatNumber(verdict.margin * 100, 1)} в. п.</span>
               </dd>
             </div>
-            <div className="fact">
-              <dt>Найдешевший рівноцінний</dt>
+            <div
+              className="fact"
+              title="Найдешевший рівноцінний варіант, у якого наступний дорожчий на тій самій лінії теж рівноцінний"
+            >
+              <dt>Рекомендований</dt>
               <dd>
-                {describeCell(experiment, verdict.cheapest)}
+                {describeCell(experiment, verdict.recommended)}
                 <span className="fact-unit">{savingNote(verdict)}</span>
               </dd>
             </div>
@@ -223,7 +239,7 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
           <div className="figure-grid">
             <div className="figure-block">
               <SweepChart
-                title="Точність на тестовому наборі (середнє і розкид запусків)"
+                title="Точність на валідаційному наборі (середнє і розкид запусків)"
                 xTitle={experiment.xTitle}
                 legendTitle={experiment.seriesTitle}
                 xs={experiment.xs}
@@ -256,9 +272,9 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
                   cellAt={(row, col) => cellByKey.get(`${row}|${col}`)}
                   shade={shade}
                   formatCell={(cell) => formatPercent(cell.accuracy.mean)}
-                  isEquivalent={(cell) => verdict !== null && cell.accuracy.mean >= verdict.threshold - 1e-9}
+                  isEquivalent={(cell) => isEquivalent(verdict, cell)}
                   best={verdict ? { row: verdict.best.series, col: verdict.best.x } : null}
-                  cheapest={verdict ? { row: verdict.cheapest.series, col: verdict.cheapest.x } : null}
+                  recommended={verdict ? { row: verdict.recommended.series, col: verdict.recommended.x } : null}
                   scaleLabels={[formatPercent(1 - worstError), formatPercent(1 - bestError)]}
                   renderTooltip={(_, __, cell) => cellTooltip(cell)}
                   svgRef={sideRef}
@@ -295,6 +311,32 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
                 />
               </div>
             </div>
+            {zoomXs.length > 1 && (
+              <div className="figure-block">
+                <SweepChart
+                  title={`Точність з ${ZOOM_FROM_EPOCH} епох, збільшено`}
+                  xTitle={experiment.xTitle}
+                  legendTitle={experiment.seriesTitle}
+                  xs={zoomXs}
+                  series={zoomSeries}
+                  formatY={(value, step) => formatPercent(value, stepDecimals(step * 100))}
+                  yLimit={{ max: 1 }}
+                  marks={marks.filter((mark) => mark.x >= ZOOM_FROM_EPOCH)}
+                  focus={focus}
+                  renderTooltip={(_, point) => cellTooltip(point)}
+                  svgRef={zoomRef}
+                />
+                <div className="figure-footer">
+                  <span className="notice">Ті самі точки, що й на графіку точності, без перших епох</span>
+                  <SaveImageControl
+                    svgRef={zoomRef}
+                    baseName={`benchmark-${experiment.id}-accuracy-zoom`}
+                    subject="збільшений графік точності"
+                    disabled={running}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="table-wrap">
@@ -303,11 +345,19 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
                 <tr>
                   {multiSeries && <th>{experiment.seriesTitle}</th>}
                   <th className="numeric">{experiment.xTitle}</th>
-                  <th className="numeric">Точність, середня</th>
+                  <th className="numeric">Валідація, середня</th>
                   <th className="numeric">Мін.</th>
                   <th className="numeric">Макс.</th>
                   <th className="numeric">σ</th>
                   <th className="numeric">Навчань</th>
+                  <th
+                    className="numeric"
+                    title="Верхня межа однобічного 95-відсоткового інтервалу різниці «найкраща − ця точка» за парним тестом; рівноцінна, якщо не більша за запас"
+                  >
+                    Відставання, межа
+                  </th>
+                  <th className="numeric">Тест, середня</th>
+                  <th className="numeric">Тест, мін.</th>
                   <th
                     className="numeric"
                     title="Середньоквадратична похибка на навчальному наборі після останньої епохи"
@@ -331,6 +381,13 @@ export function QualityResults({ experiment, run, cells, verdict }: QualityResul
                     <td className="numeric">{formatPercent(cell.accuracy.max, 2)}</td>
                     <td className="numeric">{formatPercent(cell.accuracy.std, 2)}</td>
                     <td className="numeric">{cell.accuracy.count}</td>
+                    <td className="numeric">
+                      {bounds.has(`${cell.series}|${cell.x}`)
+                        ? `${formatNumber((bounds.get(`${cell.series}|${cell.x}`) as number) * 100, 2)} в. п.`
+                        : ''}
+                    </td>
+                    <td className="numeric">{formatPercent(cell.testAccuracy.mean, 2)}</td>
+                    <td className="numeric">{formatPercent(cell.testAccuracy.min, 2)}</td>
                     <td className="numeric">{formatNumber(cell.error.mean, 4)}</td>
                     <td className="numeric">{formatDuration(cell.trainMs.median)}</td>
                     <td className="numeric">{formatNumber(cell.work / 1e6, 1)}</td>

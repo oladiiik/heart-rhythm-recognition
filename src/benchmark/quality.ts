@@ -1,5 +1,6 @@
 import {
   DATASET_PROFILES,
+  DEFAULT_PER_CLASS,
   MAX_PER_CLASS,
   MIN_PER_CLASS,
   PROFILE_LABELS,
@@ -11,7 +12,7 @@ import {
 import { createRandom, shuffled } from '../domain/random';
 import { RHYTHM_CLASSES, WINDOW_SIZE } from '../domain/rhythm';
 import { validateTrainingConfig } from '../ml/model';
-import { summarize, type Summary } from './statistics';
+import { pairedDifference, summarize, type Summary } from './statistics';
 
 /**
  * Досліди якості: від чого залежить точність мережі. Кожен дослід змінює один чи два параметри,
@@ -27,6 +28,8 @@ export interface QualityFixed {
   readonly learningRate: number;
   readonly hiddenNeurons: number;
   readonly perClass: number;
+  /** Профілі навчального набору */
+  readonly profiles: readonly DatasetProfile[];
 }
 
 export type QualityFixedField = keyof QualityFixed;
@@ -55,19 +58,33 @@ export const PROFILE_SETS: readonly ProfileSet[] = [
   { key: 'all', label: 'Усі три', profiles: DATASET_PROFILES },
 ];
 
+/** Набір із PROFILE_SETS з тими самими профілями, якщо такий є */
+export function profileSetOf(profiles: readonly DatasetProfile[]): ProfileSet | undefined {
+  return PROFILE_SETS.find(
+    (set) => set.profiles.length === profiles.length && set.profiles.every((profile) => profiles.includes(profile)),
+  );
+}
+
 export const TRAIN_TOLERANCE = 3;
 
 /**
- * Один тестовий набір на всі досліди: усі профілі, як у наборі за замовчуванням на вкладці «Дані».
- * Seed відмінний від seed навчальних наборів, тож тестові послідовності генеруються окремо від навчальних
+ * Валідаційний набір: за ним порівнюються варіанти й обирається найкращий. Усі профілі, бо розпізнавати
+ * доведеться будь-які послідовності, хоч на яких профілях навчено мережу; seed відмінний від seed навчальних наборів
  */
-export const TEST_SET: GeneratorConfig = {
-  perClass: 300,
+export const VALIDATION_SET: GeneratorConfig = {
+  perClass: DEFAULT_PER_CLASS,
   profiles: DATASET_PROFILES,
   tolerance: TRAIN_TOLERANCE,
-  seed: 1000003,
+  seed: 1000002,
 };
 
+/**
+ * Тестовий набір: на вибір варіанта не впливає, тож його точність є чесною оцінкою обраного варіанта.
+ * Так само влаштований, як валідаційний, але з іншим seed
+ */
+export const TEST_SET: GeneratorConfig = { ...VALIDATION_SET, seed: 1000003 };
+
+export const VALIDATION_SET_SIZE = VALIDATION_SET.perClass * RHYTHM_CLASSES.length;
 export const TEST_SET_SIZE = TEST_SET.perClass * RHYTHM_CLASSES.length;
 
 /**
@@ -115,11 +132,11 @@ export const QUALITY_EXPERIMENTS: Record<QualityExperimentId, QualityExperiment>
   epochs: {
     id: 'epochs',
     label: 'Епохи і швидкість навчання',
-    xTitle: 'Епох',
+    xTitle: 'Епохи',
     seriesTitle: 'Швидкість навчання',
     xs: EPOCH_CHECKPOINTS,
     series: LEARNING_RATES.map((rate) => ({ key: String(rate), label: String(rate).replace('.', ',') })),
-    fixedFields: ['hiddenNeurons', 'perClass'],
+    fixedFields: ['hiddenNeurons', 'perClass', 'profiles'],
   },
   hidden: {
     id: 'hidden',
@@ -128,7 +145,7 @@ export const QUALITY_EXPERIMENTS: Record<QualityExperimentId, QualityExperiment>
     seriesTitle: null,
     xs: HIDDEN_SIZES,
     series: [SINGLE_SERIES],
-    fixedFields: ['epochs', 'learningRate', 'perClass'],
+    fixedFields: ['epochs', 'learningRate', 'perClass', 'profiles'],
   },
   dataset: {
     id: 'dataset',
@@ -146,12 +163,13 @@ export function validateQualityPlan(plan: QualityPlan): string | null {
   if (!Number.isInteger(plan.repeats) || plan.repeats < repeats.min || plan.repeats > repeats.max) {
     return `Кількість повторів має бути цілим числом від ${repeats.min} до ${repeats.max}.`;
   }
-  const { epochs, learningRate, hiddenNeurons, perClass } = plan.fixed;
+  const { epochs, learningRate, hiddenNeurons, perClass, profiles } = plan.fixed;
   const problem = validateTrainingConfig({ epochs, learningRate, hiddenNeurons, errorThreshold: 0 });
   if (problem) return problem;
   if (!Number.isInteger(perClass) || perClass < MIN_PER_CLASS || perClass > MAX_PER_CLASS) {
     return `Послідовностей на клас має бути від ${MIN_PER_CLASS} до ${MAX_PER_CLASS}.`;
   }
+  if (profiles.length === 0) return 'Оберіть щонайменше один профіль навчального набору.';
   return null;
 }
 
@@ -187,7 +205,7 @@ export function buildQualityTasks(plan: QualityPlan): QualityTask[] {
             repeat,
             series: String(rate),
             x: null,
-            train: trainSet(fixed.perClass, DATASET_PROFILES, repeat),
+            train: trainSet(fixed.perClass, fixed.profiles, repeat),
             learningRate: rate,
             hiddenNeurons: fixed.hiddenNeurons,
             checkpoints: EPOCH_CHECKPOINTS,
@@ -200,7 +218,7 @@ export function buildQualityTasks(plan: QualityPlan): QualityTask[] {
             repeat,
             series: SINGLE_SERIES.key,
             x: hidden,
-            train: trainSet(fixed.perClass, DATASET_PROFILES, repeat),
+            train: trainSet(fixed.perClass, fixed.profiles, repeat),
             learningRate: fixed.learningRate,
             hiddenNeurons: hidden,
             checkpoints: [fixed.epochs],
@@ -246,8 +264,10 @@ export function taskWork(task: QualityTask): number {
 
 export interface CheckpointResult {
   readonly epoch: number;
-  /** Частка правильно розпізнаних тестових послідовностей */
+  /** Частка правильно розпізнаних послідовностей валідаційного набору: за нею обирається варіант */
   readonly accuracy: number;
+  /** Частка правильно розпізнаних послідовностей тестового набору */
+  readonly testAccuracy: number;
   /** Середньоквадратична похибка на навчальному наборі після цієї епохи */
   readonly error: number;
   /** Час навчання від початку до цієї епохи без часу перевірок */
@@ -259,16 +279,29 @@ export interface QualityTrial {
   readonly checkpoints: readonly CheckpointResult[];
 }
 
+/** Результат одного повтору в точці досліду: за ними точки порівнюються попарно */
+export interface QualityRun {
+  readonly repeat: number;
+  readonly accuracy: number;
+  readonly testAccuracy: number;
+}
+
 export interface QualityCell {
   readonly series: string;
   readonly x: number;
+  /** Точність на валідаційному наборі */
   readonly accuracy: Summary;
+  /** Точність на тестовому наборі */
+  readonly testAccuracy: Summary;
   readonly error: Summary;
   readonly trainMs: Summary;
   readonly work: number;
+  /** Повтори за зростанням номера */
+  readonly runs: readonly QualityRun[];
 }
 
 interface Sample {
+  readonly repeat: number;
   readonly series: string;
   readonly x: number;
   readonly result: CheckpointResult;
@@ -279,6 +312,7 @@ function samplesOf(task: QualityTask, trial: QualityTrial): Sample[] {
   const sequences = task.train.perClass * RHYTHM_CLASSES.length;
   if (task.x === null) {
     return trial.checkpoints.map((result) => ({
+      repeat: task.repeat,
       series: task.series,
       x: result.epoch,
       result,
@@ -288,7 +322,13 @@ function samplesOf(task: QualityTask, trial: QualityTrial): Sample[] {
   const last = trial.checkpoints.at(-1);
   if (!last) return [];
   return [
-    { series: task.series, x: task.x, result: last, work: trainingWork(last.epoch, sequences, task.hiddenNeurons) },
+    {
+      repeat: task.repeat,
+      series: task.series,
+      x: task.x,
+      result: last,
+      work: trainingWork(last.epoch, sequences, task.hiddenNeurons),
+    },
   ];
 }
 
@@ -318,38 +358,90 @@ export function aggregateQuality(
         series: series.key,
         x,
         accuracy: summarize(group.map((sample) => sample.result.accuracy)),
+        testAccuracy: summarize(group.map((sample) => sample.result.testAccuracy)),
         error: summarize(group.map((sample) => sample.result.error)),
         trainMs: summarize(group.map((sample) => sample.result.trainMs)),
         work: (group[0] as Sample).work,
+        runs: [...group]
+          .sort((a, b) => a.repeat - b.repeat)
+          .map(({ repeat, result }) => ({ repeat, accuracy: result.accuracy, testAccuracy: result.testAccuracy })),
       });
     }
   }
   return cells;
 }
 
+/**
+ * Запас рівноцінності δ: на скільки середня точність варіанта може поступатися найкращому, щоб вважатися
+ * рівноцінною. Задано до дослідів: пів відсоткового пункту, тобто 4–5 послідовностей з 900 валідаційних.
+ * Це менше за стандартну похибку однієї оцінки точності на наборі такого розміру (√(p(1 − p)/N) ≈ 0,65 в. п.
+ * при p = 96 %): меншу різницю не помітити навіть на власному наборі користувача того самого розміру
+ */
+export const EQUIVALENCE_MARGIN = 0.005;
+
+/** Парне порівняння точки з найкращою: різниця «найкраща − точка» та її верхня межа */
+export interface QualityComparison {
+  readonly series: string;
+  readonly x: number;
+  readonly difference: number;
+  readonly upperBound: number;
+}
+
 export interface QualityVerdict {
   readonly best: QualityCell;
-  /** Нижня межа точності, з якої варіант вважається рівноцінним найкращому */
-  readonly threshold: number;
+  readonly margin: number;
+  /** Порівняння кожної завершеної точки з найкращою, у порядку точок досліду */
+  readonly comparisons: readonly QualityComparison[];
+  /** Варіанти, рівноцінні найкращому, разом із ним, у порядку точок досліду */
+  readonly equivalent: readonly QualityCell[];
+  /** Найдешевший рівноцінний варіант */
   readonly cheapest: QualityCell;
+  /** Найдешевший рівноцінний варіант, наступний дорожчий сусід якого на тій самій лінії теж рівноцінний */
+  readonly recommended: QualityCell;
 }
 
 /**
- * Найкраща точка має найбільшу середню точність. Рівноцінними їй вважаються точки, чия середня точність
- * не нижча за найгірший із запусків найкращої (але щонайменше на одну тестову послідовність нижче):
- * таку різницю дає вже сама випадковість початкових ваг. Серед рівноцінних обирається та, що потребує
- * найменше обчислень; за однакових обчислень вища середня точність
+ * Дешевший варіант іде першим. За однакових обчислень (різні швидкості навчання чи профілі) першим іде той,
+ * у якого менший розкид точності між повторами: користувач отримує одне навчання, а не середнє
  */
-export function judgeQuality(cells: readonly QualityCell[], repeats: number, testSize: number): QualityVerdict | null {
-  const complete = cells.filter((cell) => cell.accuracy.count === repeats);
-  if (complete.length === 0) return null;
-  const byAccuracy = (a: QualityCell, b: QualityCell): number =>
-    b.accuracy.mean - a.accuracy.mean || a.work - b.work || a.accuracy.std - b.accuracy.std;
+const cheaperFirst = (a: QualityCell, b: QualityCell): number =>
+  a.work - b.work || a.accuracy.std - b.accuracy.std || b.accuracy.mean - a.accuracy.mean;
+
+/**
+ * Найкраща точка має найбільшу середню точність на валідаційному наборі. Решта порівнюються з нею попарно:
+ * повтор r усіх точок навчався на тому самому наборі, тож порівнюється різниця «найкраща − точка» в кожному
+ * повторі. Точка рівноцінна найкращій, якщо верхня межа однобічного 95-відсоткового інтервалу середньої різниці
+ * не перевищує запасу δ (тест «не гірше більш ніж на δ»). Рекомендованою стає найдешевша рівноцінна точка, у якої
+ * наступна дорожча точка тієї самої лінії теж рівноцінна: точка на плато, а не на краю, де рівноцінність
+ * трималася б випадково. Якщо такої немає, рекомендується найкраща
+ */
+export function judgeQuality(cells: readonly QualityCell[], repeats: number): QualityVerdict | null {
+  const complete = cells.filter((cell) => cell.runs.length === repeats);
+  if (complete.length === 0 || repeats < 2) return null;
+  const byAccuracy = (a: QualityCell, b: QualityCell): number => b.accuracy.mean - a.accuracy.mean || a.work - b.work;
   const best = [...complete].sort(byAccuracy)[0] as QualityCell;
-  const threshold = best.accuracy.mean - Math.max(best.accuracy.mean - best.accuracy.min, 1 / testSize);
-  const tolerance = 1e-9;
-  const cheapest = complete
-    .filter((cell) => cell.accuracy.mean >= threshold - tolerance)
-    .sort((a, b) => a.work - b.work || b.accuracy.mean - a.accuracy.mean)[0] as QualityCell;
-  return { best, threshold, cheapest };
+  const bestRuns = best.runs.map((run) => run.accuracy);
+  const comparisons = complete.map((cell): QualityComparison => {
+    const { difference, upperBound } = pairedDifference(
+      bestRuns,
+      cell.runs.map((run) => run.accuracy),
+    );
+    return { series: cell.series, x: cell.x, difference, upperBound };
+  });
+  const tolerance = 1e-12;
+  const passes = complete.map((_, i) => (comparisons[i] as QualityComparison).upperBound <= EQUIVALENCE_MARGIN + tolerance);
+  const equivalent = complete.filter((_, i) => passes[i]);
+  const onPlateau = complete.filter((cell, i) => {
+    if (!passes[i]) return false;
+    const next = complete.findIndex((other, j) => j > i && other.series === cell.series);
+    return next === -1 || (passes[next] as boolean);
+  });
+  const [cheapest] = [...equivalent].sort(cheaperFirst) as [QualityCell];
+  const recommended = [...onPlateau].sort(cheaperFirst)[0] ?? best;
+  return { best, margin: EQUIVALENCE_MARGIN, comparisons, equivalent, cheapest, recommended };
+}
+
+/** Чи рівноцінна точка найкращій; точки порівнюються за лінією і значенням x, тож підходить і точка з JSON */
+export function isEquivalent(verdict: QualityVerdict | null, cell: Pick<QualityCell, 'series' | 'x'>): boolean {
+  return verdict?.equivalent.some((other) => other.series === cell.series && other.x === cell.x) ?? false;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitLine, summarize } from './statistics';
+import { fitLine, pairedDifference, studentT95, summarize } from './statistics';
 
 describe('summarize', () => {
   it('рахує мінімум, максимум, середнє, медіану й вибіркове відхилення', () => {
@@ -40,5 +40,31 @@ describe('fitLine', () => {
         { x: 1, y: 2 },
       ]),
     ).toThrow();
+  });
+});
+
+describe('pairedDifference', () => {
+  it('рахує середню різницю пар і верхню межу однобічного інтервалу', () => {
+    // Різниці пар 1, 2, 3: середнє 2, σ 1, стандартна похибка 1/√3, ступенів свободи 2
+    const result = pairedDifference([11, 12, 13], [10, 10, 10]);
+    expect(result.difference).toBeCloseTo(2, 10);
+    expect(result.degreesOfFreedom).toBe(2);
+    expect(result.upperBound).toBeCloseTo(2 + 2.92 / Math.sqrt(3), 10);
+  });
+
+  it('прибирає спільний для пари розкид: однакова різниця в кожній парі дає межу, рівну різниці', () => {
+    expect(pairedDifference([0.9, 0.95, 0.97], [0.89, 0.94, 0.96]).upperBound).toBeCloseTo(0.01, 10);
+  });
+
+  it('відмовляє для вибірок різної довжини або однієї пари', () => {
+    expect(() => pairedDifference([1, 2], [1])).toThrow();
+    expect(() => pairedDifference([1], [1])).toThrow();
+  });
+});
+
+describe('studentT95', () => {
+  it('округлює ступені свободи вниз і для великих бере нормальний розподіл', () => {
+    expect(studentT95(9.5)).toBe(1.833);
+    expect(studentT95(500)).toBe(1.645);
   });
 });

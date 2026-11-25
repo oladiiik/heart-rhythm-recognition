@@ -1,9 +1,9 @@
 import type { BenchmarkEnvironment } from './environment';
 import { PIPELINE_STAGES, type PerformancePipeline, type PerformanceRow } from './performance';
-import type { QualityCell, QualityVerdict } from './quality';
+import { isEquivalent, type QualityCell, type QualityVerdict } from './quality';
 
 const BENCHMARK_FORMAT = 'heart-rhythm-benchmark';
-const BENCHMARK_VERSION = 1;
+const BENCHMARK_VERSION = 2;
 
 /** Усі дані запуску: за ними можна перебудувати таблиці й графіки, зокрема для звіту */
 export function benchmarkToJson(
@@ -26,8 +26,9 @@ function verdictOf(cell: QualityCell, verdict: QualityVerdict | null): string {
   if (!verdict) return '';
   const tags: string[] = [];
   if (cell === verdict.best) tags.push('best');
+  if (cell === verdict.recommended) tags.push('recommended');
   if (cell === verdict.cheapest) tags.push('cheapest_equivalent');
-  if (tags.length === 0 && cell.accuracy.mean >= verdict.threshold - 1e-9) tags.push('equivalent');
+  if (tags.length === 0 && isEquivalent(verdict, cell)) tags.push('equivalent');
   return tags.join(' ');
 }
 
@@ -41,6 +42,8 @@ export function qualityToCsv(cells: readonly QualityCell[], verdict: QualityVerd
       'accuracy_min',
       'accuracy_max',
       'accuracy_std',
+      'test_accuracy_mean',
+      'test_accuracy_min',
       'error_mean',
       'train_ms_median',
       'work',
@@ -54,6 +57,8 @@ export function qualityToCsv(cells: readonly QualityCell[], verdict: QualityVerd
       cell.accuracy.min,
       cell.accuracy.max,
       cell.accuracy.std,
+      cell.testAccuracy.mean,
+      cell.testAccuracy.min,
       cell.error.mean,
       cell.trainMs.median,
       cell.work,

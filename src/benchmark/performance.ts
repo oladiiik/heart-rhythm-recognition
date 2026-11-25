@@ -1,5 +1,5 @@
 import { datasetCsvHeader, datasetCsvRow, parseDatasetFile } from '../domain/datasetFile';
-import { DATASET_PROFILES, generateSequence, generateSeries, type DatasetProfile } from '../domain/generator';
+import { DATASET_PROFILES, DEFAULT_PER_CLASS, DEFAULT_PROFILES, generateSequence, generateSeries, type DatasetProfile } from '../domain/generator';
 import { createRandom, randomInt } from '../domain/random';
 import { RHYTHM_CLASSES, mostLikelyClass, type RhythmClass } from '../domain/rhythm';
 import { averageProbabilities, parseSeries, toWindows } from '../domain/slidingWindow';
@@ -174,7 +174,12 @@ export function generatePerformanceFile(pipeline: PerformancePipeline, size: Per
  */
 export function trainReferenceModel(): RhythmModel {
   const model = RhythmModel.untrained(DEFAULT_TRAINING_CONFIG.hiddenNeurons);
-  const dataset = trainingSetOf({ perClass: 300, profiles: DATASET_PROFILES, tolerance: TRAIN_TOLERANCE, seed: 1 });
+  const dataset = trainingSetOf({
+    perClass: DEFAULT_PER_CLASS,
+    profiles: DEFAULT_PROFILES,
+    tolerance: TRAIN_TOLERANCE,
+    seed: 1,
+  });
   model.train(dataset, DEFAULT_TRAINING_CONFIG, () => {});
   return model;
 }
@@ -194,64 +199,77 @@ export interface PerformanceTrial {
 }
 
 /**
+ * Секундомір етапів одного запуску. Кожен етап також позначається через performance.measure з назвою
+ * «<мітка> <етап>», тож у DevTools і трасі Chrome його видно окремим відрізком поруч із паузами прибирання сміття
+ */
+class StageClock {
+  private readonly startedAt = performance.now();
+  private last = this.startedAt;
+  private readonly timings: StageTiming[] = [];
+
+  constructor(private readonly label: string | undefined) {}
+
+  lap(stage: PerformanceStage): void {
+    const now = performance.now();
+    this.timings.push({ stage, ms: now - this.last });
+    if (this.label) performance.measure(`${this.label} ${stage}`, { start: this.last, end: now });
+    this.last = now;
+  }
+
+  has(stage: PerformanceStage): boolean {
+    return this.timings.some((timing) => timing.stage === stage);
+  }
+
+  result(): Pick<PerformanceTrial, 'stages' | 'totalMs'> {
+    return { stages: this.timings, totalMs: this.last - this.startedAt };
+  }
+}
+
+/**
  * Ті самі кроки, що й у RhythmModel.classifySeries, але з окремим заміром кожного.
  * Відлік починається з читання вмісту файла (як після вибору файла користувачем) і закінчується готовою відповіддю
  */
-export async function measureRecognition(file: Blob, model: RhythmModel): Promise<Omit<PerformanceTrial, 'taskId'>> {
-  const startedAt = performance.now();
+export async function measureRecognition(
+  file: Blob,
+  model: RhythmModel,
+  label?: string,
+): Promise<Omit<PerformanceTrial, 'taskId'>> {
+  const clock = new StageClock(label);
   const text = await file.text();
-  const readAt = performance.now();
+  clock.lap('read');
   const parsed = parseSeries(text);
   if (!parsed.ok) throw new Error(parsed.message);
-  const parsedAt = performance.now();
+  clock.lap('parse');
   const windows = toWindows(parsed.values);
-  const windowedAt = performance.now();
+  clock.lap('windows');
   const perWindow = windows.map((window) => model.classifyWindow(window));
-  const classifiedAt = performance.now();
+  clock.lap('classify');
   mostLikelyClass(averageProbabilities(perWindow));
-  const finishedAt = performance.now();
-  return {
-    fileBytes: file.size,
-    units: parsed.values.length,
-    stages: [
-      { stage: 'read', ms: readAt - startedAt },
-      { stage: 'parse', ms: parsedAt - readAt },
-      { stage: 'windows', ms: windowedAt - parsedAt },
-      { stage: 'classify', ms: classifiedAt - windowedAt },
-      { stage: 'average', ms: finishedAt - classifiedAt },
-    ],
-    totalMs: finishedAt - startedAt,
-  };
+  clock.lap('average');
+  return { fileBytes: file.size, units: parsed.values.length, ...clock.result() };
 }
 
 /**
  * Навчання нової мережі на наборі з файла. Перша епоха вимірюється окремо, бо до неї входить
  * підготовка даних (нормалізація, кодування класів, ініціалізація мережі)
  */
-export async function measureTraining(file: Blob, epochs: number): Promise<Omit<PerformanceTrial, 'taskId'>> {
-  const startedAt = performance.now();
+export async function measureTraining(
+  file: Blob,
+  epochs: number,
+  label?: string,
+): Promise<Omit<PerformanceTrial, 'taskId'>> {
+  const clock = new StageClock(label);
   const text = await file.text();
-  const readAt = performance.now();
+  clock.lap('read');
   const dataset = parseDatasetFile('benchmark.csv', text);
-  const parsedAt = performance.now();
+  clock.lap('parse');
   const model = RhythmModel.untrained(PERFORMANCE_NETWORK.hiddenNeurons);
-  let firstEpochAt = Number.NaN;
   model.train(dataset, { ...PERFORMANCE_NETWORK, epochs, errorThreshold: 0 }, ({ epoch }) => {
-    if (epoch === 1) firstEpochAt = performance.now();
+    if (epoch === 1) clock.lap('firstEpoch');
   });
-  const finishedAt = performance.now();
-  if (Number.isNaN(firstEpochAt)) throw new Error('Навчання завершилося раніше першої епохи.');
-  return {
-    fileBytes: file.size,
-    units: dataset.length,
-    stages: [
-      { stage: 'read', ms: readAt - startedAt },
-      { stage: 'parse', ms: parsedAt - readAt },
-      { stage: 'firstEpoch', ms: firstEpochAt - parsedAt },
-      { stage: 'epochs', ms: finishedAt - firstEpochAt },
-    ],
-    totalMs: finishedAt - startedAt,
-  };
+  if (!clock.has('firstEpoch')) throw new Error('Навчання завершилося раніше першої епохи.');
+  clock.lap('epochs');
+  return { fileBytes: file.size, units: dataset.length, ...clock.result() };
 }
 
 export interface PerformanceRow {

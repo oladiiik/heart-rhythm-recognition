@@ -27,6 +27,43 @@ export function summarize(values: readonly number[]): Summary {
   };
 }
 
+/** Квантиль 0,95 розподілу Стьюдента для 1–30 ступенів свободи */
+const T_95 = [
+  6.314, 2.92, 2.353, 2.132, 2.015, 1.943, 1.895, 1.86, 1.833, 1.812, 1.796, 1.782, 1.771, 1.761, 1.753, 1.746, 1.74,
+  1.734, 1.729, 1.725, 1.721, 1.717, 1.714, 1.711, 1.708, 1.706, 1.703, 1.701, 1.699, 1.697,
+] as const;
+
+/** Квантиль 0,95 розподілу Стьюдента: межа однобічного 95-відсоткового інтервалу; понад 30 ступенів використовується 1,645 */
+export function studentT95(degreesOfFreedom: number): number {
+  if (!(degreesOfFreedom >= 1)) throw new Error('Ступенів свободи має бути щонайменше 1.');
+  return T_95[Math.floor(degreesOfFreedom) - 1] ?? 1.645;
+}
+
+export interface PairedDifference {
+  /** Середня різниця пар a − b */
+  readonly difference: number;
+  /** Верхня межа однобічного 95-відсоткового інтервалу середньої різниці */
+  readonly upperBound: number;
+  readonly degreesOfFreedom: number;
+}
+
+/**
+ * Парне порівняння: a[i] і b[i] виміряно в однакових умовах (той самий навчальний набір), тож порівнюються
+ * різниці пар, і спільна для пари випадковість у них скорочується. Верхня межа однобічного 95-відсоткового
+ * інтервалу середньої різниці дає тест «a кращий за b не більш ніж на δ»: він пройдений, якщо межа не перевищує δ
+ */
+export function pairedDifference(a: readonly number[], b: readonly number[]): PairedDifference {
+  if (a.length !== b.length) throw new Error('Парні вибірки мають бути однакової довжини.');
+  if (a.length < 2) throw new Error('Для порівняння потрібно щонайменше дві пари.');
+  const { mean, std, count } = summarize(a.map((value, i) => value - (b[i] as number)));
+  const degreesOfFreedom = count - 1;
+  return {
+    difference: mean,
+    upperBound: mean + studentT95(degreesOfFreedom) * (std / Math.sqrt(count)),
+    degreesOfFreedom,
+  };
+}
+
 export interface LinearFit {
   readonly slope: number;
   readonly intercept: number;

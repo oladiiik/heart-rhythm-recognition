@@ -9,17 +9,19 @@ import {
   type PerformancePipeline,
 } from '../../benchmark/performance';
 import {
+  PROFILE_SETS,
   QUALITY_EXPERIMENTS,
   QUALITY_EXPERIMENT_IDS,
   QUALITY_LIMITS,
   TEST_SET,
-  TEST_SET_SIZE,
+  VALIDATION_SET,
   aggregateQuality,
   judgeQuality,
+  profileSetOf,
   type QualityExperimentId,
   type QualityFixedField,
 } from '../../benchmark/quality';
-import { MAX_PER_CLASS, MIN_PER_CLASS } from '../../domain/generator';
+import { DEFAULT_PER_CLASS, DEFAULT_PROFILES, MAX_PER_CLASS, MIN_PER_CLASS } from '../../domain/generator';
 import { fileTimestamp, formatFileSize, saveText } from '../../export/fileSave';
 import { DEFAULT_TRAINING_CONFIG, TRAINING_LIMITS } from '../../ml/model';
 import { useApp } from '../../state/appStore';
@@ -55,7 +57,9 @@ interface FixedFieldSpec {
   readonly hint: string;
 }
 
-const FIXED_FIELDS: Record<QualityFixedField, FixedFieldSpec> = {
+type NumericFixedField = Exclude<QualityFixedField, 'profiles'>;
+
+const FIXED_FIELDS: Record<NumericFixedField, FixedFieldSpec> = {
   epochs: {
     label: 'Епох',
     ...TRAINING_LIMITS.epochs,
@@ -79,16 +83,18 @@ const FIXED_FIELDS: Record<QualityFixedField, FixedFieldSpec> = {
     min: MIN_PER_CLASS,
     max: MAX_PER_CLASS,
     step: 1,
-    hint: 'Розмір навчального набору (усі три профілі). Тестовий набір окремий і завжди однаковий.',
+    hint: 'Розмір навчального набору. Валідаційний і тестовий набори окремі й завжди однакові.',
   },
 };
 
-const DEFAULT_FIXED: Record<QualityFixedField, number> = {
+const DEFAULT_FIXED: Record<NumericFixedField, number> = {
   epochs: DEFAULT_TRAINING_CONFIG.epochs,
   learningRate: DEFAULT_TRAINING_CONFIG.learningRate,
   hiddenNeurons: DEFAULT_TRAINING_CONFIG.hiddenNeurons,
-  perClass: TEST_SET.perClass,
+  perClass: DEFAULT_PER_CLASS,
 };
+
+const DEFAULT_PROFILE_SET = profileSetOf(DEFAULT_PROFILES)?.key ?? 'all';
 
 export function BenchmarkTab() {
   const { operation, log } = useApp();
@@ -97,7 +103,8 @@ export function BenchmarkTab() {
   const [mode, setMode] = useState<Mode>('quality');
   const [experimentId, setExperimentId] = useState<QualityExperimentId>('epochs');
   const [qualityRepeats, setQualityRepeats] = useState('10');
-  const [fixed, setFixed] = useState<Record<QualityFixedField, string>>({
+  const [profileSet, setProfileSet] = useState(DEFAULT_PROFILE_SET);
+  const [fixed, setFixed] = useState<Record<NumericFixedField, string>>({
     epochs: String(DEFAULT_FIXED.epochs),
     learningRate: String(DEFAULT_FIXED.learningRate),
     hiddenNeurons: String(DEFAULT_FIXED.hiddenNeurons),
@@ -117,7 +124,7 @@ export function BenchmarkTab() {
     if (!qualityRun) return { cells: [], verdict: null };
     const cells = aggregateQuality(experiment, qualityRun.tasks, qualityRun.trials);
     const verdict =
-      qualityRun.status === 'completed' ? judgeQuality(cells, qualityRun.plan.repeats, TEST_SET_SIZE) : null;
+      qualityRun.status === 'completed' ? judgeQuality(cells, qualityRun.plan.repeats) : null;
     return { cells, verdict };
   }, [experiment, qualityRun]);
 
@@ -140,6 +147,7 @@ export function BenchmarkTab() {
               learningRate: Number(fixed.learningRate),
               hiddenNeurons: Number(fixed.hiddenNeurons),
               perClass: Number(fixed.perClass),
+              profiles: PROFILE_SETS.find((set) => set.key === profileSet)?.profiles ?? DEFAULT_PROFILES,
             },
           })
         : await startPerformance({
@@ -170,6 +178,7 @@ export function BenchmarkTab() {
               elapsedMs: qualityRun.elapsedMs,
               workers: qualityRun.workers,
               plan: qualityRun.plan,
+              validationSet: VALIDATION_SET,
               testSet: TEST_SET,
               cells: quality.cells,
               verdict: quality.verdict,
@@ -245,6 +254,31 @@ export function BenchmarkTab() {
             hint={`Від ${QUALITY_LIMITS.repeats.min} до ${QUALITY_LIMITS.repeats.max}. Кожна точка навчається стільки разів з іншим набором і початковими вагами: розкид показує, яку різницю дає випадковість.`}
           />
           {experiment.fixedFields.map((field) => {
+            if (field === 'profiles') {
+              return (
+                <div
+                  key={field}
+                  className="field-stack"
+                  title="Профілі навчального набору. Валідаційний і тестовий набори завжди містять усі три профілі."
+                >
+                  <label className="side-label" htmlFor="benchmark-fixed-profiles">
+                    Профілі набору
+                  </label>
+                  <select
+                    id="benchmark-fixed-profiles"
+                    value={profileSet}
+                    disabled={running}
+                    onChange={(event) => setProfileSet(event.target.value)}
+                  >
+                    {PROFILE_SETS.map((set) => (
+                      <option key={set.key} value={set.key}>
+                        {set.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
             const spec = FIXED_FIELDS[field];
             return (
               <NumberField

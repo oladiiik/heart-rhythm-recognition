@@ -42,6 +42,9 @@ export interface GeneratorConfig {
 export const MIN_TOTAL_SEQUENCES = 250;
 export const MIN_PER_CLASS = Math.ceil(MIN_TOTAL_SEQUENCES / RHYTHM_CLASSES.length);
 export const MAX_PER_CLASS = 20000;
+/** Розмір і профілі набору за замовчуванням на вкладці «Дані»; обрано дослідом «Набір даних» (ЛР3) */
+export const DEFAULT_PER_CLASS = 300;
+export const DEFAULT_PROFILES: readonly DatasetProfile[] = ['clean'];
 export const MAX_TOLERANCE = 15;
 
 const NOISY_TOLERANCE_FACTOR = 3;

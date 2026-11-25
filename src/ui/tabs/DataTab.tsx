@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import { datasetToCsv, datasetToJson, parseDatasetFile } from '../../domain/datasetFile';
 import {
   DATASET_PROFILES,
+  DEFAULT_PER_CLASS,
+  DEFAULT_PROFILES,
   MAX_PER_CLASS,
   MAX_TOLERANCE,
   MIN_PER_CLASS,
@@ -84,8 +86,8 @@ function datasetInfo(dataset: DatasetState): InfoRow[] {
 export function DataTab() {
   const { dataset, setDataset, log, reportActivity, isTraining } = useApp();
 
-  const [profiles, setProfiles] = useState<readonly DatasetProfile[]>(DATASET_PROFILES);
-  const [perClass, setPerClass] = useState('300');
+  const [profiles, setProfiles] = useState<readonly DatasetProfile[]>(DEFAULT_PROFILES);
+  const [perClass, setPerClass] = useState(String(DEFAULT_PER_CLASS));
   const [tolerance, setTolerance] = useState('3');
   const [seed, setSeed] = useState('1');
   const [formError, setFormError] = useState<string | null>(null);

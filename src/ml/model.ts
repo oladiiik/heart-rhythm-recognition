@@ -30,9 +30,9 @@ export const TRAINING_LIMITS = {
 } as const;
 
 export const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
-  epochs: 2000,
-  learningRate: 0.3,
-  hiddenNeurons: 8,
+  epochs: 1000,
+  learningRate: 0.03,
+  hiddenNeurons: 2,
   errorThreshold: 0.005,
 };
 

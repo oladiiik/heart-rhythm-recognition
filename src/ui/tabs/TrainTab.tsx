@@ -109,7 +109,7 @@ export function TrainTab() {
           label="Кількість епох"
           value={epochs}
           onChange={setEpochs}
-          placeholder="напр. 2000"
+          placeholder={`напр. ${DEFAULT_TRAINING_CONFIG.epochs}`}
           min={TRAINING_LIMITS.epochs.min}
           max={TRAINING_LIMITS.epochs.max}
           step={1}
@@ -121,7 +121,7 @@ export function TrainTab() {
           label="Швидкість навчання"
           value={learningRate}
           onChange={setLearningRate}
-          placeholder="напр. 0.3"
+          placeholder={`напр. ${DEFAULT_TRAINING_CONFIG.learningRate}`}
           min={TRAINING_LIMITS.learningRate.min}
           max={TRAINING_LIMITS.learningRate.max}
           step="any"
@@ -133,7 +133,7 @@ export function TrainTab() {
           label="Прихованих нейронів"
           value={hiddenNeurons}
           onChange={setHiddenNeurons}
-          placeholder="напр. 8"
+          placeholder={`напр. ${DEFAULT_TRAINING_CONFIG.hiddenNeurons}`}
           min={TRAINING_LIMITS.hiddenNeurons.min}
           max={TRAINING_LIMITS.hiddenNeurons.max}
           step={1}
