@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { StatusBar } from './StatusBar';
+import { BenchmarkTab } from './tabs/BenchmarkTab';
 import { DataTab } from './tabs/DataTab';
 import { RecognizeTab } from './tabs/RecognizeTab';
 import { TrainTab } from './tabs/TrainTab';
@@ -9,6 +10,7 @@ const TABS = [
   { id: 'data', label: 'Дані' },
   { id: 'train', label: 'Навчання' },
   { id: 'recognize', label: 'Розпізнавання' },
+  { id: 'benchmark', label: 'Бенчмарк' },
   { id: 'watch', label: 'Годинник' },
 ] as const;
 
@@ -18,6 +20,7 @@ const PANELS: Record<TabId, ReactNode> = {
   data: <DataTab />,
   train: <TrainTab />,
   recognize: <RecognizeTab />,
+  benchmark: <BenchmarkTab />,
   watch: <WatchTab />,
 };
 

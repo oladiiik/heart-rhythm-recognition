@@ -1,7 +1,6 @@
-import { emptyConfusionMatrix, summarize, type EvaluationMetrics } from '../domain/metrics';
-import { mostLikelyClass } from '../domain/rhythm';
-import type { LabeledSequence } from '../domain/generator';
+import { evaluateModel } from './evaluation';
 import { RhythmModel, type EpochStatus } from './model';
+import { createThrottle } from './throttle';
 import type { TrainRequest, WorkerRequest, WorkerResponse } from './protocol';
 
 interface WorkerScope {
@@ -14,30 +13,6 @@ const scope = self as unknown as WorkerScope;
 const PROGRESS_INTERVAL_MS = 40;
 const MAX_HISTORY_POINTS = 400;
 
-function createThrottle(): (isLast: boolean) => boolean {
-  let lastSentAt = -Infinity;
-  return (isLast) => {
-    const now = performance.now();
-    if (!isLast && now - lastSentAt < PROGRESS_INTERVAL_MS) return false;
-    lastSentAt = now;
-    return true;
-  };
-}
-
-function evaluate(model: RhythmModel, test: readonly LabeledSequence[]): EvaluationMetrics {
-  const confusion = emptyConfusionMatrix();
-  const shouldReport = createThrottle();
-  test.forEach((sequence, index) => {
-    const predicted = mostLikelyClass(model.classifyWindow(sequence.values));
-    confusion[sequence.label][predicted]++;
-    const processed = index + 1;
-    if (shouldReport(processed === test.length)) {
-      scope.postMessage({ type: 'evaluating', processed, total: test.length });
-    }
-  });
-  return summarize(confusion);
-}
-
 /** Рівномірно проріджує історію похибки, завжди зберігаючи першу й останню епоху */
 function downsample(history: readonly EpochStatus[]): EpochStatus[] {
   if (history.length <= MAX_HISTORY_POINTS) return history.slice();
@@ -48,7 +23,7 @@ function downsample(history: readonly EpochStatus[]): EpochStatus[] {
 function runTraining(request: TrainRequest): void {
   const { config } = request;
   const model = RhythmModel.untrained(config.hiddenNeurons);
-  const shouldReport = createThrottle();
+  const shouldReport = createThrottle(PROGRESS_INTERVAL_MS);
   const history: EpochStatus[] = [];
 
   const trainStartedAt = performance.now();
@@ -69,7 +44,10 @@ function runTraining(request: TrainRequest): void {
   });
 
   const evaluationStartedAt = performance.now();
-  const metrics = evaluate(model, request.test);
+  const shouldReportEvaluation = createThrottle(PROGRESS_INTERVAL_MS);
+  const metrics = evaluateModel(model, request.test, (processed, total) => {
+    if (shouldReportEvaluation(processed === total)) scope.postMessage({ type: 'evaluating', processed, total });
+  });
   const evaluationMs = performance.now() - evaluationStartedAt;
 
   scope.postMessage({

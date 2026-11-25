@@ -39,6 +39,17 @@ export interface ModelState {
 
 export type ActivityOutcome = 'success' | 'cancelled' | 'error';
 
+/**
+ * Тривала робота, що займає процесор. Одночасно може йти лише одна:
+ * бенчмарк під час навчання (чи навпаки) показав би час, спотворений конкуренцією за ядра
+ */
+export type Operation = 'training' | 'benchmark';
+
+const OPERATION_BUSY: Record<Operation, string> = {
+  training: 'Триває навчання мережі: дочекайтеся його завершення або зупиніть його.',
+  benchmark: 'Триває бенчмарк: дочекайтеся його завершення або зупиніть його на вкладці «Бенчмарк».',
+};
+
 export type Activity =
   | { readonly status: 'idle' }
   | {
@@ -70,6 +81,7 @@ interface AppState {
   readonly dataset: DatasetState | null;
   readonly model: ModelState | null;
   readonly activity: Activity;
+  readonly operation: Operation | null;
   readonly lossHistory: readonly EpochStatus[];
   readonly logEntries: readonly LogEntry[];
   readonly recognitions: readonly RecognitionRecord[];
@@ -79,6 +91,7 @@ type Action =
   | { type: 'datasetReplaced'; dataset: DatasetState }
   | { type: 'modelReplaced'; model: ModelState; lossHistory?: readonly EpochStatus[] }
   | { type: 'activityChanged'; activity: Activity }
+  | { type: 'operationChanged'; operation: Operation | null }
   | { type: 'trainingStarted'; activity: Activity }
   | { type: 'epochReported'; history: readonly EpochStatus[]; activity: Activity }
   | { type: 'logAppended'; entry: LogEntry }
@@ -92,6 +105,7 @@ const initialState: AppState = {
   dataset: null,
   model: null,
   activity: { status: 'idle' },
+  operation: null,
   lossHistory: [],
   logEntries: [],
   recognitions: [],
@@ -105,8 +119,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, model: action.model, lossHistory: action.lossHistory ?? [] };
     case 'activityChanged':
       return { ...state, activity: action.activity };
+    case 'operationChanged':
+      return { ...state, operation: action.operation };
     case 'trainingStarted':
-      return { ...state, activity: action.activity, lossHistory: [] };
+      return { ...state, activity: action.activity, operation: 'training', lossHistory: [] };
     case 'epochReported':
       return { ...state, activity: action.activity, lossHistory: action.history };
     case 'logAppended':
@@ -133,6 +149,9 @@ interface AppActions {
   loadModel(raw: unknown, file: FileInfo): void;
   train(request: TrainingRequest): string | null;
   cancelTraining(): void;
+  /** Займає процесор під бенчмарк; повертає причину відмови, якщо вже триває інша робота */
+  beginBenchmark(): string | null;
+  endBenchmark(): void;
   reportActivity(activity: Activity): void;
   addRecognition(record: Omit<RecognitionRecord, 'id' | 'time'>): void;
   clearRecognitions(): void;
@@ -180,6 +199,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const nextId = useRef(1);
   const job = useRef<TrainingJob | null>(null);
+  // Дублює state.operation, щоб перевірка й захоплення відбувалися синхронно, без очікування рендеру
+  const operation = useRef<Operation | null>(null);
   const trainingStartedAt = useRef(0);
   const datasetRef = useRef(state.dataset);
   datasetRef.current = state.dataset;
@@ -192,6 +213,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reportActivity = useCallback((activity: Activity) => dispatch({ type: 'activityChanged', activity }), []);
 
+  const releaseOperation = useCallback((released: Operation) => {
+    if (operation.current !== released) return;
+    operation.current = null;
+    dispatch({ type: 'operationChanged', operation: null });
+  }, []);
+
+  const beginBenchmark = useCallback((): string | null => {
+    if (operation.current) return OPERATION_BUSY[operation.current];
+    operation.current = 'benchmark';
+    dispatch({ type: 'operationChanged', operation: 'benchmark' });
+    return null;
+  }, []);
+
+  const endBenchmark = useCallback(() => releaseOperation('benchmark'), [releaseOperation]);
+
   const setDataset = useCallback((dataset: DatasetState) => dispatch({ type: 'datasetReplaced', dataset }), []);
 
   const loadModel = useCallback((raw: unknown, file: FileInfo) => {
@@ -201,7 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const train = useCallback(
     (request: TrainingRequest): string | null => {
-      if (job.current) return 'Навчання вже триває.';
+      if (operation.current) return OPERATION_BUSY[operation.current];
       const dataset = datasetRef.current;
       const problem = validateTrainingRequest(dataset, request);
       if (problem || !dataset) return problem;
@@ -209,6 +245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { config } = request;
       const { train: trainSet, test: testSet } = splitDataset(dataset.sequences, request.testShare, request.splitSeed);
       const title = 'Навчання мережі';
+      operation.current = 'training';
       trainingStartedAt.current = performance.now();
       dispatch({
         type: 'trainingStarted',
@@ -255,6 +292,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }),
           onDone: (result) => {
             job.current = null;
+            releaseOperation('training');
             const { model } = parseModelSnapshot(result.snapshot);
             const { summary } = result.snapshot;
             const stoppedEarly = summary.epochsRun < config.epochs;
@@ -290,6 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
           onFailed: (message) => {
             job.current = null;
+            releaseOperation('training');
             dispatch({
               type: 'activityChanged',
               activity: {
@@ -306,13 +345,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       return null;
     },
-    [log],
+    [log, releaseOperation],
   );
 
   const cancelTraining = useCallback(() => {
     if (!job.current) return;
     job.current.cancel();
     job.current = null;
+    releaseOperation('training');
     const elapsedMs = performance.now() - trainingStartedAt.current;
     dispatch({
       type: 'activityChanged',
@@ -325,7 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
     });
     log('warning', `Навчання зупинено користувачем через ${formatDuration(elapsedMs)}.`);
-  }, [log]);
+  }, [log, releaseOperation]);
 
   const addRecognition = useCallback((record: Omit<RecognitionRecord, 'id' | 'time'>) => {
     dispatch({ type: 'recognitionAdded', record: { ...record, id: nextId.current++, time: new Date() } });
@@ -333,7 +373,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const clearRecognitions = useCallback(() => dispatch({ type: 'recognitionsCleared' }), []);
 
-  const isTraining = state.activity.status === 'running';
+  const isTraining = state.operation === 'training';
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -345,6 +385,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loadModel,
       train,
       cancelTraining,
+      beginBenchmark,
+      endBenchmark,
       reportActivity,
       addRecognition,
       clearRecognitions,
@@ -358,6 +400,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loadModel,
       train,
       cancelTraining,
+      beginBenchmark,
+      endBenchmark,
       reportActivity,
       addRecognition,
       clearRecognitions,

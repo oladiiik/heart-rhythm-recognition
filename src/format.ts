@@ -21,3 +21,13 @@ export function formatDuration(ms: number): string {
   const minutes = Math.floor(ms / 60000);
   return `${minutes} хв ${Math.round((ms % 60000) / 1000)} с`;
 }
+
+/** Українська форма слова після числа: 1 епоха, 2 епохи, 5 епох, 21 епоха */
+export function plural(count: number, one: string, few: string, many: string): string {
+  const units = Math.abs(count) % 10;
+  const tens = Math.abs(count) % 100;
+  if (!Number.isInteger(count)) return few;
+  if (units === 1 && tens !== 11) return one;
+  if (units >= 2 && units <= 4 && (tens < 12 || tens > 14)) return few;
+  return many;
+}

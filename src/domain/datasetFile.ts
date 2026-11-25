@@ -27,9 +27,16 @@ function toSequence(values: unknown, label: unknown, profile: unknown, where: st
   return { values: numbers, label, profile: toOrigin(profile) };
 }
 
+export function datasetCsvHeader(): string {
+  return CSV_HEADER.join(',');
+}
+
+export function datasetCsvRow(sequence: LabeledSequence): string {
+  return [...sequence.values, sequence.label, sequence.profile].join(',');
+}
+
 export function datasetToCsv(dataset: readonly LabeledSequence[]): string {
-  const rows = dataset.map((sequence) => [...sequence.values, sequence.label, sequence.profile].join(','));
-  return [CSV_HEADER.join(','), ...rows].join('\n') + '\n';
+  return [datasetCsvHeader(), ...dataset.map(datasetCsvRow)].join('\n') + '\n';
 }
 
 export function datasetToJson(dataset: readonly LabeledSequence[]): string {

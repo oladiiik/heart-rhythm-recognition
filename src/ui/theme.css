@@ -185,6 +185,17 @@ textarea {
   font-size: 13px;
 }
 
+/* Частина бічної панелі, що показується лише в одному з режимів вкладки */
+.side-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-stack select {
+  width: 100%;
+}
+
 .content {
   display: flex;
   flex-direction: column;
@@ -771,6 +782,18 @@ summary {
   gap: 10px 20px;
 }
 
+/* Два графіки поруч займають перший екран; таблиця під ними прокручується разом із вмістом */
+.figure-grid {
+  display: grid;
+  flex: 1 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+  min-height: max(
+    calc(var(--chart-min-height) + 42px),
+    calc(100vh - var(--header-height) - var(--status-height) - 160px)
+  );
+}
+
 .save-image {
   display: flex;
   gap: 6px;
@@ -1195,6 +1218,11 @@ summary {
 /* Вузькі екрани */
 
 @media (max-width: 1180px) {
+  .figure-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
   .data-split,
   .result-split,
   .verdict {
